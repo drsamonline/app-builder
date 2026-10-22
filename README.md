@@ -1,5 +1,7 @@
 # app-builder — shared build kit (portable EXE + Android APK)
 
+> **Landing page:** <https://drsamonline.github.io/app-builder/> — what the kit is, the two artefacts it builds (portable EXE + Android APK), the debug-signing caveat, and the stable download URLs.
+
 A small, reusable kit that turns a **static web app** into two double-clickable,
 offline deliverables:
 
