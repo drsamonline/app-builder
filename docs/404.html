@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found — app-builder</title>
+<meta name="description" content="That page does not exist on the app-builder site.">
+<meta name="robots" content="noindex, follow">
+<meta name="theme-color" content="#0c0e11">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://drsamonline.github.io/app-builder/">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c0e11'/%3E%3Cpath d='M9 11h14v3H9zM9 18h9v3H9z' fill='%23f5a524'/%3E%3Cpath d='M21.5 17.2l4 2.3-4 2.3z' fill='%232dd4bf'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0c0e11;--panel:#14181d;--line:#242b33;--line2:#313a44;
+    --ink:#e8ecf1;--dim:#95a1af;--dim2:#6c7885;--amber:#f5a524;--amber-2:#fbbf24;--teal:#2dd4bf;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+    font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(720px 420px at 50% -10%, rgba(245,165,36,.12), rgba(12,14,17,0) 68%),
+      linear-gradient(transparent 95%, rgba(255,255,255,.018) 95%);
+    background-size:auto,100% 26px}
+  .box{max-width:620px;margin:0 auto;padding:40px 24px;text-align:center}
+  .ic{width:64px;height:64px;margin:0 auto 22px;display:grid;place-items:center;border-radius:16px;
+    background:var(--panel);border:1px solid var(--line2);color:var(--amber)}
+  .ic svg{width:32px;height:32px}
+  .code{font:700 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--teal)}
+  h1{font-size:clamp(28px,6vw,42px);margin:14px 0 12px;letter-spacing:-.02em}
+  p{color:var(--dim);margin:0 0 26px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  a.btn{display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:12px;font-weight:650;
+    font-size:15px;border:1px solid var(--line2);background:#1a1f26;color:var(--ink);text-decoration:none}
+  a.btn:hover{background:#232b34}
+  a.btn.primary{background:linear-gradient(135deg,var(--amber),var(--amber-2));border:0;color:#1a1204}
+  a.btn svg{width:17px;height:17px}
+  footer{margin-top:34px;color:var(--dim2);font-size:13.5px}
+  footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+  <main class="box">
+    <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 9.5v4.5M12 17.2h.01"/></svg></span>
+    <div class="code">Error 404</div>
+    <h1>That page isn't here</h1>
+    <p>The link may be broken, or the page may have moved. The build kit lives on the landing page.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://drsamonline.github.io/app-builder/">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 12l6-6M4 12l6 6"/></svg>
+        Back to app-builder
+      </a>
+      <a class="btn" href="https://github.com/drsamonline/app-builder" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 20h16"/></svg>
+        GitHub repository
+      </a>
+    </div>
+    <footer>app-builder &mdash; shared build kit by Dr. Sohil Momin &middot; <a href="https://drsamonline.github.io/">project hub</a></footer>
+  </main>
+</body>
+</html>
