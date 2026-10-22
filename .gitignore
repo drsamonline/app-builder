@@ -1,0 +1,12 @@
+# Android build output
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+
+# PyInstaller output
+exe/build/
+exe/dist/
+exe/spec/
+__pycache__/
