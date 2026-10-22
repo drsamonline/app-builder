@@ -2,11 +2,11 @@
 
 **A shared build kit that turns a static web app into two offline deliverables: a portable Windows EXE and an Android APK.**
 
-[![Landing page](https://img.shields.io/badge/landing%20page-open-2e7d32
-[![All projects](https://img.shields.io/badge/All%20projects-hub-2e7d32
-[![Offline](https://img.shields.io/badge/offline-yes-2e7d32
-[![Type: shared build kit](https://img.shields.io/badge/type-shared%20build%20kit-586069
-[![Tech: Python + Kotlin](https://img.shields.io/badge/tech-Python%20%2B%20Kotlin-3572A5
+[![Landing page](https://img.shields.io/badge/landing%20page-open-2e7d32?style=flat-square)](https://drsamonline.github.io/app-builder/)
+[![All projects](https://img.shields.io/badge/All%20projects-hub-2e7d32?style=flat-square)](https://drsamonline.github.io/)
+[![Offline](https://img.shields.io/badge/offline-yes-2e7d32?style=flat-square)](https://github.com/drsamonline/app-builder)
+[![Type: shared build kit](https://img.shields.io/badge/type-shared%20build%20kit-586069?style=flat-square)](https://drsamonline.github.io/app-builder/)
+[![Tech: Python + Kotlin](https://img.shields.io/badge/tech-Python%20%2B%20Kotlin-3572A5?style=flat-square)](https://github.com/drsamonline/app-builder)
 
 **Landing page:** <https://drsamonline.github.io/app-builder/> &nbsp;·&nbsp; **All projects:** <https://drsamonline.github.io/>
 
