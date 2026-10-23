@@ -262,7 +262,7 @@ def dashboard():
     prods = products(rs)
     # the kit count comes from the repo list itself (a name ending in -kit), so it
     # is always right even when the private registry can't be read
-    kits = [r["name"] for r in rs if r["name"].endswith("-kit")] or [k["id"] for k in kit_list()]
+    kits = [r["name"] for r in rs if r["name"].endswith("-kit") and r["name"] not in META] or [k["id"] for k in kit_list()]
     rows, conf, cats = [], {}, {}
     for r in prods:
         s = score(r)
