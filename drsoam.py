@@ -17,6 +17,7 @@ Dependency-free. Set GH_TOKEN to raise the API rate limit.
 MIT License. (c) 2026 Dr Sohil Momin.
 """
 import json, os, re, sys, urllib.request, datetime
+from collections import Counter
 
 OWNER = "drsamonline"
 
@@ -123,34 +124,72 @@ def score(r):
 
 
 # ---- the four outputs -------------------------------------------------------
+# ---- the roadmap shown on the console ("next to come") ---------------------
+ROADMAP = [
+    {"what": "Retrofit — adopt the kits into the apps that duplicate them", "state": "in progress",
+     "link": "https://github.com/drsamonline/forge"},
+    {"what": "Kits queued — audio, date, convert, image, chart, form, qr, markdown, pdf, table, template, cli, json",
+     "state": "queued", "link": "https://github.com/drsamonline/knowledge"},
+    {"what": "Apps queued — Carrier/Beam (optical), Chalk, Canteen", "state": "queued",
+     "link": "https://github.com/drsamonline/registry"},
+    {"what": "Forge as a licensed product — the commercial pack", "state": "planned",
+     "link": "https://github.com/drsamonline/forge"},
+]
+
+
 def dashboard():
-    rows = []
-    for r in products():
+    rs = repos()
+    prods = products(rs)
+    kits = kit_list()
+    rows, conf, cats = [], {}, {}
+    for r in prods:
         s = score(r)
+        c = category(r["name"])
         rows.append({
             "name": r["name"], "description": r.get("description") or "",
             "pushed_at": r.get("pushed_at"), "homepage": home(r),
             "html_url": r.get("html_url"), "download": "",
             "status": "%d/5" % s, "status_tone": "ok" if s >= 4 else ("warn" if s >= 3 else "bad"),
         })
+        conf[str(s)] = conf.get(str(s), 0) + 1
+        cats[c] = cats.get(c, 0) + 1
     rows.sort(key=lambda x: (x["pushed_at"] or ""), reverse=True)
     total = len(rows)
     avg = round(sum(int(x["status"].split("/")[0]) for x in rows) / total, 1) if total else 0.0
+
+    # activity: pushes per day, over the last 14 days, across every repo
+    day_counts = Counter((r.get("pushed_at") or "")[:10] for r in rs if r.get("pushed_at"))
+    today = datetime.date.today()
+    activity = []
+    for i in range(13, -1, -1):
+        d = (today - datetime.timedelta(days=i)).isoformat()
+        activity.append({"date": d, "count": day_counts.get(d, 0)})
+
+    autos = automation()
+    bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
+
     return {
-        "generated": datetime.date.today().isoformat(),
-        "reckoning": "%d projects · avg conformance %s/5 · updated automatically." % (total, avg),
+        "generated": today.isoformat(),
+        "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
+                     % (total, len(kits), avg),
+        "health": "bad" if bad else "ok",
         "cards": [
-            {"title": "Projects", "value": str(total), "tone": ""},
+            {"title": "Products", "value": str(total), "tone": ""},
+            {"title": "Kits", "value": str(len(kits)), "tone": "ok"},
             {"title": "Avg conformance", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
-            {"title": "Store", "value": "Matneo — live", "tone": "ok"},
-            {"title": "Forge", "value": "live", "tone": "ok"},
+            {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
         ],
+        "stats": {"conformance": conf, "categories": cats},
+        "activity": activity,
+        "automation": autos,
+        "roadmap": ROADMAP,
         "repos": rows,
-        "automation": automation(),
         "links": {"store": "https://drsamonline.github.io/Matneo/",
+                  "hub": "https://drsamonline.github.io/",
                   "forge": "https://github.com/%s/forge" % OWNER,
                   "registry": "https://github.com/%s/registry" % OWNER,
-                  "knowledge": "https://github.com/%s/knowledge" % OWNER},
+                  "knowledge": "https://github.com/%s/knowledge" % OWNER,
+                  "actions": "https://github.com/%s?tab=repositories" % OWNER},
     }
 
 
