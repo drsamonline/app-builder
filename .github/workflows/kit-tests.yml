@@ -1,0 +1,25 @@
+name: All kit tests
+
+# One place to see every kit green. Runs each kit's headless test in parallel.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kit: [web-kit, optical-kit, crypto-kit, compress-kit, lan-kit, game-kit, astro-kit, repertory-kit, search-kit, srs-kit, book-kit, case-kit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: drsamonline/${{ matrix.kit }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run tests
+        run: node test-node.js
