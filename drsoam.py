@@ -26,7 +26,6 @@ OWNER = "drsamonline"
 META = {
     "drsamonline", "drsamonline.github.io", "app-builder", "skills", "profile-kit",
     "forge", "registry", "knowledge", "dashboard", "Matneo",
-    "saga-vn-engine", "aethelgard-rpg-engine",
 }
 KITS = {
     "web-kit", "optical-kit", "crypto-kit", "compress-kit", "lan-kit", "game-kit",
@@ -39,7 +38,7 @@ HOMEOPATHY = {"kent-repertory-explorer", "boericke-repertory", "remedy-relations
               "mnemosyne-companion", "the-symphony-companion"}
 HEALTH = {"bmi-bmr-tdee-macros-fluid-calculator"}
 GAMES = {"neon-games", "neon-runner", "retro-strike", "idle-city-ages-of-growth",
-         "dance-fight", "aethelgard-games"}
+         "dance-fight", "aethelgard-games", "AethelgardVN"}
 DATA = {"homoeopathic-materia-medica-repertory-json", "OMM"}
 UTILITIES = {"offline-pdf-toolkit", "CLDR", "TTB", "All4ONE", "ULTIMATE-WINDOWS-OPTIMIZER",
              "The_Browser", "NEO", "SmartNotes", "conqueror-os", "ambient-sound-studio",
@@ -47,14 +46,22 @@ UTILITIES = {"offline-pdf-toolkit", "CLDR", "TTB", "All4ONE", "ULTIMATE-WINDOWS-
 FEATURED = {"today-card", "kent-repertory-explorer", "bmi-bmr-tdee-macros-fluid-calculator"}
 
 
+_CACHE = {}
+
+
 def _get(url):
+    # in-process memo: one fetch per URL per run (fewer API calls, faster)
+    if url in _CACHE:
+        return _CACHE[url]
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                "User-Agent": "drsoam"})
     tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if tok:
         req.add_header("Authorization", "Bearer " + tok)
     with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+        data = json.load(r)
+    _CACHE[url] = data
+    return data
 
 
 def repos():
@@ -258,6 +265,11 @@ def dashboard():
         d = (today - datetime.timedelta(days=i)).isoformat()
         activity.append({"date": d, "count": day_counts.get(d, 0)})
 
+    pushed_today = {}
+    for r in rs:
+        if (r.get("pushed_at") or "")[:10] == today.isoformat():
+            pushed_today[r["name"]] = 1
+
     autos = automation()
     bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
 
@@ -274,7 +286,7 @@ def dashboard():
             {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
         ],
         "summary": {"products": total, "kits": len(kits), "avg": avg,
-                    "pushes": sum(a["count"] for a in activity)},
+                    "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
         "attention": attention(),
@@ -380,7 +392,24 @@ AUTOMATIONS = [
 
 
 def automation():
-    """For each self-updating workflow: its schedule and its most recent run."""
+    """For each self-updating workflow: its schedule and its most recent run.
+
+    Batched: ONE /actions/runs call per repo, then match each workflow by name -
+    instead of one call per workflow.
+    """
+    repos_needed = sorted({a["repo"] for a in AUTOMATIONS})
+    latest = {}
+    for repo in repos_needed:
+        if repo in ("registry", "forge", "knowledge"):
+            continue  # private: the dashboard token cannot read their runs
+        try:
+            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=40")
+            for w in d.get("workflow_runs") or []:
+                key = (repo, (w.get("name") or "").strip())
+                if key not in latest:
+                    latest[key] = w
+        except Exception:
+            pass
     out = []
     for a in AUTOMATIONS:
         rec = dict(a)
@@ -390,21 +419,35 @@ def automation():
         rec["conclusion"] = "no runs yet"
         if a["repo"] in ("registry", "forge", "knowledge"):
             rec["conclusion"] = "scheduled (private repo)"
-            out.append(rec)
-            continue
-        try:
-            d = _get("https://api.github.com/repos/%s/%s/actions/workflows/%s/runs?per_page=1"
-                     % (OWNER, a["repo"], a["file"]))
-            runs = d.get("workflow_runs") or []
-            if runs:
-                w = runs[0]
+        else:
+            w = latest.get((a["repo"], a["name"]))
+            if w:
                 rec["last_run"] = w.get("updated_at") or w.get("created_at")
                 rec["conclusion"] = w.get("conclusion") or w.get("status") or "?"
                 rec["url"] = w.get("html_url") or rec["url"]
-        except Exception:
-            rec["conclusion"] = "unknown"
         out.append(rec)
     return out
+
+
+def esc_xml(s):
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def rss(items):
+    """A tiny RSS feed of the recent-activity list (subscribable)."""
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<rss version="2.0"><channel>',
+           '<title>drsamonline — what changed</title>',
+           '<link>https://drsamonline.github.io/dashboard/</link>',
+           '<description>Recent pushes, pull requests and releases across drsamonline.</description>',
+           '<lastBuildDate>' + now + '</lastBuildDate>']
+    for c in items or []:
+        title = "%s — %s" % (c.get("repo", ""), c.get("text") or c.get("type", ""))
+        out.append("<item><title>%s</title><description>%s</description><guid>%s</guid><pubDate>%s</pubDate></item>"
+                   % (esc_xml(title), esc_xml(c.get("text", "")),
+                      esc_xml(c.get("repo", "") + "-" + str(c.get("when", ""))), esc_xml(c.get("when") or now)))
+    out.append("</channel></rss>")
+    return "\n".join(out) + "\n"
 
 
 def write(path, obj):
@@ -427,9 +470,14 @@ def main():
         data = dashboard()
         snap = {"date": data["generated"], "products": data["summary"]["products"],
                 "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
-                "pushes": data["summary"]["pushes"]}
-        data["history"] = update_history(snap)
+                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"]}
+        hist = update_history(snap)
+        data["history"] = hist
+        for row in data["repos"]:
+            row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
         write("data.json", data)
+        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
+        write("feed.xml", rss(data["changes"]))
     elif mode == "store":
         data = store()
         write("docs/data/products.json", data)
