@@ -46,22 +46,14 @@ UTILITIES = {"offline-pdf-toolkit", "CLDR", "TTB", "All4ONE", "ULTIMATE-WINDOWS-
 FEATURED = {"today-card", "kent-repertory-explorer", "bmi-bmr-tdee-macros-fluid-calculator"}
 
 
-_CACHE = {}
-
-
 def _get(url):
-    # in-process memo: one fetch per URL per run (fewer API calls, faster)
-    if url in _CACHE:
-        return _CACHE[url]
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                "User-Agent": "drsoam"})
     tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if tok:
         req.add_header("Authorization", "Bearer " + tok)
     with urllib.request.urlopen(req, timeout=30) as r:
-        data = json.load(r)
-    _CACHE[url] = data
-    return data
+        return json.load(r)
 
 
 def repos():
@@ -116,6 +108,39 @@ def first_sentence(s):
 
 def pages_url(n):
     return "https://drsamonline.github.io/%s/" % n
+
+
+def repo_cover(n):
+    """A cover image taken from the repository itself.
+
+    Prefers a screenshot / preview / cover / social / banner / hero image
+    committed in the repo; ignores logos, icons, favicons and sprite sheets.
+    Falls back to GitHub's own auto-generated repo card. Returns "" only if
+    nothing can be found (the page then draws a branded cover).
+    """
+    import json as _json, os as _os, urllib.request as _u
+    skip = ("favicon", "icon", "logo", "sprite", "apple-touch")
+    for ref in ("main", "master"):
+        try:
+            u = "https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1" % (OWNER, n, ref)
+            req = _u.Request(u, headers={"User-Agent": "drsoam", "Accept": "application/vnd.github+json"})
+            tok = _os.environ.get("GH_TOKEN")
+            if tok:
+                req.add_header("Authorization", "Bearer %s" % tok)
+            d = _json.loads(_u.urlopen(req, timeout=25).read())
+        except Exception:
+            continue
+        imgs = [x["path"] for x in d.get("tree", [])
+                if x.get("type") == "blob" and x["path"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+                and not any(b in x["path"].lower() for b in skip)]
+        if not imgs:
+            break
+        pref = [p for p in imgs if any(k in p.lower() for k in
+                ("screenshot", "preview", "cover", "social", "banner", "hero", "shot", "demo"))]
+        pick = (pref or imgs)[0]
+        return "https://raw.githubusercontent.com/%s/%s/HEAD/%s" % (OWNER, n, pick)
+    # GitHub's auto-generated card for the repo (works for every public repo)
+    return "https://opengraph.githubassets.com/1/%s/%s" % (OWNER, n)
 
 
 def shot(n):
@@ -208,8 +233,7 @@ def changes():
                     text = (cs[-1].get("message") or "").split("\n")[0][:110]
                 else:
                     br = (p.get("ref") or "").split("/")[-1]
-                    n = p.get("size") or p.get("distinct_size") or 0
-                    text = ("%d commit(s) to %s" % (n, br)) if n else ("pushed to " + br)
+                    text = "%d commit(s) to %s" % (p.get("size") or 0, br)
             elif t == "PullRequestEvent":
                 text = (p.get("action", "") + ": " + ((p.get("pull_request") or {}).get("title") or ""))[:110]
             elif t == "IssuesEvent":
@@ -266,17 +290,11 @@ def dashboard():
         d = (today - datetime.timedelta(days=i)).isoformat()
         activity.append({"date": d, "count": day_counts.get(d, 0)})
 
-    pushed_today = {}
-    for r in rs:
-        if (r.get("pushed_at") or "")[:10] == today.isoformat():
-            pushed_today[r["name"]] = 1
-
     autos = automation()
     bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
 
     return {
         "generated": today.isoformat(),
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
                      % (total, len(kits), avg),
         "health": "bad" if bad else "ok",
@@ -287,7 +305,7 @@ def dashboard():
             {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
         ],
         "summary": {"products": total, "kits": len(kits), "avg": avg,
-                    "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
+                    "pushes": sum(a["count"] for a in activity)},
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
         "attention": attention(),
@@ -313,7 +331,7 @@ def store():
         lic = (r.get("license") or {}).get("spdx_id") if r.get("license") else "MIT"
         desc = r.get("description") or ""
         cat.append({"id": n.lower(), "title": n, "category": category(n), "type": "open-source",
-                    "price": "Free", "link": home(r), "landingPage": home(r), "image": shot(n),
+                    "price": "Free", "link": home(r), "landingPage": home(r), "image": repo_cover(n) or shot(n),
                     "sourceRepo": "%s/%s" % (OWNER, n), "license": lic or "MIT",
                     "tagline": first_sentence(desc), "description": desc,
                     "tags": (r.get("topics") or [])[:4] or [category(n)],
@@ -342,7 +360,7 @@ def posts():
         desc = (r.get("description") or "").strip()
         out.append({"title": first_sentence(desc) or n, "repo": n, "category": "App update",
                     "date": (r.get("pushed_at") or "")[:10], "summary": desc,
-                    "url": home(r), "source": r.get("html_url"), "image": shot(n), "kind": "update"})
+                    "url": home(r), "source": r.get("html_url"), "image": repo_cover(n) or shot(n), "kind": "update"})
     out.sort(key=lambda p: p["date"], reverse=True)
     return {"generated": datetime.date.today().isoformat(), "posts": out[:24]}
 
@@ -393,24 +411,7 @@ AUTOMATIONS = [
 
 
 def automation():
-    """For each self-updating workflow: its schedule and its most recent run.
-
-    Batched: ONE /actions/runs call per repo, then match each workflow by name -
-    instead of one call per workflow.
-    """
-    repos_needed = sorted({a["repo"] for a in AUTOMATIONS})
-    latest = {}
-    for repo in repos_needed:
-        if repo in ("registry", "forge", "knowledge"):
-            continue  # private: the dashboard token cannot read their runs
-        try:
-            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=40")
-            for w in d.get("workflow_runs") or []:
-                key = (repo, (w.get("name") or "").strip())
-                if key not in latest:
-                    latest[key] = w
-        except Exception:
-            pass
+    """For each self-updating workflow: its schedule and its most recent run."""
     out = []
     for a in AUTOMATIONS:
         rec = dict(a)
@@ -420,35 +421,21 @@ def automation():
         rec["conclusion"] = "no runs yet"
         if a["repo"] in ("registry", "forge", "knowledge"):
             rec["conclusion"] = "scheduled (private repo)"
-        else:
-            w = latest.get((a["repo"], a["name"]))
-            if w:
+            out.append(rec)
+            continue
+        try:
+            d = _get("https://api.github.com/repos/%s/%s/actions/workflows/%s/runs?per_page=1"
+                     % (OWNER, a["repo"], a["file"]))
+            runs = d.get("workflow_runs") or []
+            if runs:
+                w = runs[0]
                 rec["last_run"] = w.get("updated_at") or w.get("created_at")
                 rec["conclusion"] = w.get("conclusion") or w.get("status") or "?"
                 rec["url"] = w.get("html_url") or rec["url"]
+        except Exception:
+            rec["conclusion"] = "unknown"
         out.append(rec)
     return out
-
-
-def esc_xml(s):
-    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
-
-
-def rss(items):
-    """A tiny RSS feed of the recent-activity list (subscribable)."""
-    now = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
-    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<rss version="2.0"><channel>',
-           '<title>drsamonline — what changed</title>',
-           '<link>https://drsamonline.github.io/dashboard/</link>',
-           '<description>Recent pushes, pull requests and releases across drsamonline.</description>',
-           '<lastBuildDate>' + now + '</lastBuildDate>']
-    for c in items or []:
-        title = "%s — %s" % (c.get("repo", ""), c.get("text") or c.get("type", ""))
-        out.append("<item><title>%s</title><description>%s</description><guid>%s</guid><pubDate>%s</pubDate></item>"
-                   % (esc_xml(title), esc_xml(c.get("text", "")),
-                      esc_xml(c.get("repo", "") + "-" + str(c.get("when", ""))), esc_xml(c.get("when") or now)))
-    out.append("</channel></rss>")
-    return "\n".join(out) + "\n"
 
 
 def write(path, obj):
@@ -471,14 +458,9 @@ def main():
         data = dashboard()
         snap = {"date": data["generated"], "products": data["summary"]["products"],
                 "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
-                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"]}
-        hist = update_history(snap)
-        data["history"] = hist
-        for row in data["repos"]:
-            row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
+                "pushes": data["summary"]["pushes"]}
+        data["history"] = update_history(snap)
         write("data.json", data)
-        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
-        write("feed.xml", rss(data["changes"]))
     elif mode == "store":
         data = store()
         write("docs/data/products.json", data)
