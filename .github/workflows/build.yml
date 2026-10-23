@@ -44,13 +44,17 @@ jobs:
         with: { python-version: '3.12' }
       - run: python -m pip install --upgrade pip pyinstaller
       - shell: bash
-        env:
-          APP_NAME: ${{ inputs.app_name }}
         run: |
+          set -e
           rm -rf builder/exe/app && mkdir -p builder/exe/app
           cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
-          python builder/exe/build.py
-          mkdir -p out && cp "builder/exe/dist/${{ inputs.app_name }}-portable.exe" "out/"
+          # pass APP_NAME explicitly (do not rely on env propagation), then find
+          # whatever the builder actually produced - its name must not matter.
+          APP_NAME="${{ inputs.app_name }}" python builder/exe/build.py
+          exe="$(ls builder/exe/dist/*portable*.exe 2>/dev/null | head -1 || true)"
+          if [ -z "$exe" ]; then echo "no portable exe was produced"; ls -la builder/exe/dist || true; exit 1; fi
+          mkdir -p out && cp "$exe" "out/${{ inputs.app_name }}-portable.exe"
+          ls -la out
       - uses: actions/upload-artifact@v4
         with:
           name: portable-exe
@@ -96,8 +100,7 @@ jobs:
   release:
     name: Publish release
     runs-on: ubuntu-latest
-    needs: [exe, apk]
-    if: always()
+    needs: [exe, apk]        # only when BOTH succeeded (no half-built release)
     steps:
       - uses: actions/download-artifact@v4
         with: { name: portable-exe, path: dist }
