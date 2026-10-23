@@ -189,36 +189,72 @@ def controls():
             for a in AUTOMATIONS]
 
 
-def quota():
-    """Actions budget. Public repos are free; the private repos draw on 2,000 min/month.
+def _auth_get(url, tok):
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "drsoam"})
+    if tok:
+        req.add_header("Authorization", "Bearer " + tok)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
 
-    The live minutes figure needs a classic PAT with the 'user' scope, supplied as
-    the BILLING_TOKEN secret (fine-grained tokens cannot read billing).
+
+def quota():
+    """Actions budget.
+
+    GitHub RETIRED the user-level billing API (it returns 410 Gone), so the live
+    figure is ESTIMATED from the private repos' run durations instead. That needs a
+    token that can read those repos' Actions runs - a CLASSIC PAT with the 'repo'
+    scope, supplied as the BILLING_TOKEN secret.
     """
     out = {"available": False, "included_minutes": 2000,
            "note": "Actions minutes are free on public repos; the private repos draw on the free 2,000 min/month."}
     tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    # 1) try the (retired) billing endpoint first - harmless if it 410s
     try:
-        req = urllib.request.Request("https://api.github.com/users/%s/settings/billing/actions" % OWNER,
-                                     headers={"Accept": "application/vnd.github+json", "User-Agent": "drsoam"})
-        if tok:
-            req.add_header("Authorization", "Bearer " + tok)
-        with urllib.request.urlopen(req, timeout=30) as r:
-            d = json.load(r)
+        d = _auth_get("https://api.github.com/users/%s/settings/billing/actions" % OWNER, tok)
         out["available"] = True
         out["used_minutes"] = d.get("total_minutes_used")
         out["included_minutes"] = d.get("included_minutes") or 2000
-    except Exception as e:
-        out["note"] += (" The BILLING_TOKEN call failed (%s). It must be a CLASSIC PAT with the 'user' scope."
-                         % str(e)[:120])
+        out["source"] = "billing api"
+    except Exception:
+        pass
+    # 2) estimate this month's private-repo minutes from run durations
     try:
-        runs = 0
+        mstart = datetime.datetime.now(datetime.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        total, n = 0.0, 0
         for repo in ("forge", "registry", "knowledge"):
-            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=1")
-            runs += int(d.get("total_count") or 0)
-        out["private_runs"] = runs
+            page = 1
+            while page <= 3:
+                url = ("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo)
+                       + "?" + "per_page=100" + "&" + "page=" + str(page))
+                batch = _auth_get(url, tok).get("workflow_runs") or []
+                for w in batch:
+                    s0 = w.get("run_started_at") or w.get("created_at")
+                    e0 = w.get("updated_at")
+                    if not s0 or not e0:
+                        continue
+                    try:
+                        s = datetime.datetime.fromisoformat(s0.replace("Z", "+00:00"))
+                        e = datetime.datetime.fromisoformat(e0.replace("Z", "+00:00"))
+                    except Exception:
+                        continue
+                    if s < mstart:
+                        continue
+                    total += max(0.0, (e - s).total_seconds()) / 60.0
+                    n += 1
+                if len(batch) < 100:
+                    break
+                page += 1
+        out["private_runs"] = n
+        out["estimated_minutes"] = round(total, 1)
+        if not out["available"]:
+            out["note"] += (" The billing API is retired (410 Gone), so this is an ESTIMATE from %d "
+                             "private-repo run(s) this month. BILLING_TOKEN must be a CLASSIC PAT with "
+                             "the 'repo' scope for this to compute." % n)
     except Exception:
         out["private_runs"] = None
+        if not out["available"]:
+            out["note"] += (" Set BILLING_TOKEN to a CLASSIC PAT with the 'repo' scope so usage can be "
+                             "estimated from the private repos' run durations.")
     return out
 
 
