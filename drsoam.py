@@ -190,16 +190,26 @@ def controls():
 
 
 def quota():
-    """Actions budget. Public repos are free; the private repos draw on 2,000 min/month."""
+    """Actions budget. Public repos are free; the private repos draw on 2,000 min/month.
+
+    The live minutes figure needs a classic PAT with the 'user' scope, supplied as
+    the BILLING_TOKEN secret (fine-grained tokens cannot read billing).
+    """
     out = {"available": False, "included_minutes": 2000,
            "note": "Actions minutes are free on public repos; the private repos draw on the free 2,000 min/month."}
+    tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     try:
-        d = _get("https://api.github.com/users/%s/settings/billing/actions" % OWNER)
+        req = urllib.request.Request("https://api.github.com/users/%s/settings/billing/actions" % OWNER,
+                                     headers={"Accept": "application/vnd.github+json", "User-Agent": "drsoam"})
+        if tok:
+            req.add_header("Authorization", "Bearer " + tok)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            d = json.load(r)
         out["available"] = True
         out["used_minutes"] = d.get("total_minutes_used")
         out["included_minutes"] = d.get("included_minutes") or 2000
     except Exception:
-        out["note"] += " (needs a billing-scoped token to read the live number.)"
+        out["note"] += " Add a classic PAT with the 'user' scope as the BILLING_TOKEN secret to read the live number."
     try:
         runs = 0
         for repo in ("forge", "registry", "knowledge"):
