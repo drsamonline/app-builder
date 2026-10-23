@@ -247,9 +247,9 @@ def quota():
         out["private_runs"] = n
         out["estimated_minutes"] = round(total, 1)
         if not out["available"]:
-            out["note"] += (" The billing API is retired (410 Gone), so this is an ESTIMATE from %d "
-                             "private-repo run(s) this month. BILLING_TOKEN must be a CLASSIC PAT with "
-                             "the 'repo' scope for this to compute." % n)
+            out["note"] = ("Actions minutes are free on public repos; the private repos draw on the free "
+                            "2,000 min/month. The billing API is retired (410 Gone), so this is an ESTIMATE "
+                            "from %d private-repo run(s) this month." % n)
     except Exception:
         out["private_runs"] = None
         if not out["available"]:
