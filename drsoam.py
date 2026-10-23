@@ -26,6 +26,7 @@ OWNER = "drsamonline"
 META = {
     "drsamonline", "drsamonline.github.io", "app-builder", "skills", "profile-kit",
     "forge", "registry", "knowledge", "dashboard", "Matneo",
+    "saga-vn-engine", "aethelgard-rpg-engine",
 }
 KITS = {
     "web-kit", "optical-kit", "crypto-kit", "compress-kit", "lan-kit", "game-kit",
@@ -38,7 +39,7 @@ HOMEOPATHY = {"kent-repertory-explorer", "boericke-repertory", "remedy-relations
               "mnemosyne-companion", "the-symphony-companion"}
 HEALTH = {"bmi-bmr-tdee-macros-fluid-calculator"}
 GAMES = {"neon-games", "neon-runner", "retro-strike", "idle-city-ages-of-growth",
-         "dance-fight", "aethelgard-games", "AethelgardVN"}
+         "dance-fight", "aethelgard-games"}
 DATA = {"homoeopathic-materia-medica-repertory-json", "OMM"}
 UTILITIES = {"offline-pdf-toolkit", "CLDR", "TTB", "All4ONE", "ULTIMATE-WINDOWS-OPTIMIZER",
              "The_Browser", "NEO", "SmartNotes", "conqueror-os", "ambient-sound-studio",
