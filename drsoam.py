@@ -113,13 +113,16 @@ def pages_url(n):
 def repo_cover(n):
     """A cover image taken from the repository itself.
 
-    Prefers a screenshot / preview / cover / social / banner / hero image
-    committed in the repo; ignores logos, icons, favicons and sprite sheets.
-    Falls back to GitHub's own auto-generated repo card. Returns "" only if
-    nothing can be found (the page then draws a branded cover).
+    Prefers a screenshot / preview / cover / social / banner / hero image that
+    sits shallow in the tree, and ignores logos, icons, favicons, sprites and
+    anything under test / vendor / build / mod directories. Falls back to
+    GitHub's own auto-generated repo card. Returns "" only if nothing is found.
     """
     import json as _json, os as _os, urllib.request as _u
-    skip = ("favicon", "icon", "logo", "sprite", "apple-touch")
+    bad_dir = ("/test", "test/", "/spec", "spec/", "node_modules", "vendor", "third_party",
+               "dist/", "build/", ".github/", "coverage", "mods/", "/fixtures")
+    bad_name = ("favicon", "icon", "logo", "sprite", "apple-touch", "badge", "screenshot-2")
+    prefer = ("screenshot", "preview", "cover", "social", "banner", "hero", "shot", "demo")
     for ref in ("main", "master"):
         try:
             u = "https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1" % (OWNER, n, ref)
@@ -130,16 +133,19 @@ def repo_cover(n):
             d = _json.loads(_u.urlopen(req, timeout=25).read())
         except Exception:
             continue
-        imgs = [x["path"] for x in d.get("tree", [])
-                if x.get("type") == "blob" and x["path"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
-                and not any(b in x["path"].lower() for b in skip)]
+        imgs = []
+        for x in d.get("tree", []):
+            p = x.get("path", "")
+            lp = p.lower()
+            if x.get("type") != "blob" or not lp.endswith((".png", ".jpg", ".jpeg", ".webp")):
+                continue
+            if any(b in lp for b in bad_name) or any(b in lp for b in bad_dir):
+                continue
+            imgs.append(p)
         if not imgs:
             break
-        pref = [p for p in imgs if any(k in p.lower() for k in
-                ("screenshot", "preview", "cover", "social", "banner", "hero", "shot", "demo"))]
-        pick = (pref or imgs)[0]
-        return "https://raw.githubusercontent.com/%s/%s/HEAD/%s" % (OWNER, n, pick)
-    # GitHub's auto-generated card for the repo (works for every public repo)
+        imgs.sort(key=lambda p: (0 if any(k in p.lower() for k in prefer) else 1, p.count("/"), len(p)))
+        return "https://raw.githubusercontent.com/%s/%s/HEAD/%s" % (OWNER, n, imgs[0])
     return "https://opengraph.githubassets.com/1/%s/%s" % (OWNER, n)
 
 
