@@ -355,6 +355,47 @@ def plan_block(rs=None):
     }
 
 
+
+def traffic(rs=None):
+    """Views, clones, referrers and popular pages (GitHub keeps only 14 days).
+
+    Needs a token with PUSH access to each repo. The Actions-read token does not
+    have that, so we PROBE once and, if it is refused, say so plainly rather than
+    making hundreds of calls that all fail. It lights up by itself when a suitable
+    token is supplied.
+    """
+    rs = rs or repos()
+    names = [r["name"] for r in rs if r["name"] not in META]
+    out = {"available": False, "window": "14 days",
+           "note": "Needs a token with push access to the repos (the Actions-read token is not enough).",
+           "repos": {}}
+    tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not names or not tok:
+        return out
+    base = "https://api.github.com/repos/%s/" % OWNER
+    try:
+        _auth_get(base + names[0] + "/traffic/views", tok)   # the probe
+    except Exception:
+        return out
+    out["available"] = True
+    out["note"] = "Last 14 days — GitHub's retention window."
+    for n in names:
+        try:
+            v = _auth_get(base + n + "/traffic/views", tok)
+            c = _auth_get(base + n + "/traffic/clones", tok)
+            rf = _auth_get(base + n + "/traffic/popular/referrers", tok)
+            pp = _auth_get(base + n + "/traffic/popular/paths", tok)
+            out["repos"][n] = {
+                "views": v.get("count") or 0, "uniques": v.get("uniques") or 0,
+                "clones": c.get("count") or 0, "clone_uniques": c.get("uniques") or 0,
+                "referrers": [{"from": x.get("referrer"), "count": x.get("count")} for x in (rf or [])][:5],
+                "paths": [{"path": x.get("path"), "count": x.get("count"), "title": x.get("title")} for x in (pp or [])][:5],
+            }
+        except Exception:
+            out["repos"][n] = {}
+    return out
+
+
 def community(rs=None):
     """What OTHER people did: stars, forks and watchers — and who forked what.
 
@@ -396,7 +437,7 @@ def community(rs=None):
     ext = {"issues": 0, "prs": 0, "items": []}
     try:
         q = urllib.parse.quote("is:open user:%s -author:%s" % (OWNER, OWNER))
-        d = _get("https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=10")
+        d = _get("https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=100")
         for i in (d.get("items") or []):
             ext["prs" if i.get("pull_request") else "issues"] += 1
             ext["items"].append({"title": i.get("title") or "",
@@ -477,6 +518,7 @@ def dashboard():
         "roadmap": ROADMAP,
         "plan": plan,
         "community": community(rs),
+        "traffic": traffic(rs),
         "repos": rows,
         "links": {"store": "https://drsamonline.github.io/Matneo/",
                   "hub": "https://drsamonline.github.io/",
@@ -652,13 +694,17 @@ def main():
         data = dashboard()
         snap = {"date": data["generated"], "products": data["summary"]["products"],
                 "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
-                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"]}
+                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"],
+                "stars": data["community"]["totals"]["stars"], "forks": data["community"]["totals"]["forks"],
+                "watchers": data["community"]["totals"]["watchers"]}
         hist = update_history(snap)
         data["history"] = hist
         for row in data["repos"]:
             row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
         write("data.json", data)
         write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
+        write("community.json", {"generated": data["generated"], **data["community"]})
+        write("traffic.json", {"generated": data["generated"], **data["traffic"]})
         write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
         write("feed.xml", rss(data["changes"]))
     elif mode == "store":
