@@ -119,7 +119,7 @@ def repo_cover(n):
     GitHub's own auto-generated repo card. Returns "" only if nothing is found.
     """
     import json as _json, os as _os, urllib.request as _u
-    bad_dir = ("/test", "test/", "/spec", "spec/", "node_modules", "vendor", "third_party",
+    bad_dir = ("/test", "test/", "tests/", "/spec", "spec/", "node_modules", "vendor", "third_party",
                "dist/", "build/", ".github/", "coverage", "mods/", "/fixtures")
     bad_name = ("favicon", "icon", "logo", "sprite", "apple-touch", "badge", "screenshot-2")
     prefer = ("screenshot", "preview", "cover", "social", "banner", "hero", "shot", "demo")
