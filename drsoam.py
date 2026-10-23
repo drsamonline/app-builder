@@ -369,7 +369,8 @@ def traffic(rs=None):
     out = {"available": False, "window": "14 days",
            "note": "Needs a token with push access to the repos (the Actions-read token is not enough).",
            "repos": {}}
-    tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    tok = (os.environ.get("TRAFFIC_TOKEN") or os.environ.get("BILLING_TOKEN")
+           or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))
     if not names or not tok:
         return out
     base = "https://api.github.com/repos/%s/" % OWNER
