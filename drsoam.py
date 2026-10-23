@@ -61,9 +61,22 @@ def repos():
     return [x for x in r if not x.get("fork")]
 
 
+_KIT_IDS = None
+
+
+def _kits():
+    """The kit ids: the built-in set PLUS whatever the registry lists (so a new
+    kit can never leak into the products list)."""
+    global _KIT_IDS
+    if _KIT_IDS is None:
+        _KIT_IDS = set(KITS) | {k.get("id") for k in kit_list() if k.get("id")}
+    return _KIT_IDS
+
+
 def products(rs=None):
     """The product repos: live, not meta, not a kit."""
-    return [r for r in (rs or repos()) if r["name"] not in META and r["name"] not in KITS]
+    kits = _kits()
+    return [r for r in (rs or repos()) if r["name"] not in META and r["name"] not in kits]
 
 
 def kit_list():
@@ -236,6 +249,10 @@ def automation():
         rec["url"] = "%s/actions/workflows/%s" % (rec["repo_url"], a["file"])
         rec["last_run"] = None
         rec["conclusion"] = "no runs yet"
+        if a["repo"] in ("registry", "forge", "knowledge"):
+            rec["conclusion"] = "scheduled (private repo)"
+            out.append(rec)
+            continue
         try:
             d = _get("https://api.github.com/repos/%s/%s/actions/workflows/%s/runs?per_page=1"
                      % (OWNER, a["repo"], a["file"]))
