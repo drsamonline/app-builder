@@ -304,6 +304,35 @@ def update_history(snap):
     return hist
 
 
+
+def plan_block():
+    """Built vs planned — the idea list reconciled against the live repos.
+
+    plan.json lives in the PRIVATE registry repo, so this needs a token (the same
+    one the budget panel uses). If it can't be read, the block is omitted rather
+    than guessed.
+    """
+    tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not tok:
+        return None
+    try:
+        d = _auth_get("https://api.github.com/repos/%s/registry/contents/plan.json" % OWNER, tok)
+        plan = json.loads(base64.b64decode(d["content"]).decode("utf-8"))
+    except Exception:
+        return None
+    rec = plan.get("reconciled") or {}
+    if not rec:
+        return None
+    return {
+        "planned": rec.get("planned"),
+        "built": rec.get("built"),
+        "unbuilt": rec.get("unbuilt"),
+        "live_products": rec.get("live_products"),
+        "live_not_planned": rec.get("live_not_planned"),
+        "link": "https://github.com/%s/registry/blob/main/plan.json" % OWNER,
+    }
+
+
 def dashboard():
     rs = repos()
     prods = products(rs)
@@ -341,6 +370,16 @@ def dashboard():
 
     autos = automation()
     bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
+    plan = plan_block()
+
+    cards = [
+        {"title": "Products", "value": str(total), "tone": ""},
+        {"title": "Kits", "value": str(len(kits)), "tone": "ok"},
+        {"title": "Avg conformance", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
+        {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
+    ]
+    if plan:
+        cards.append({"title": "Built / planned", "value": "%s / %s" % (plan.get("built"), plan.get("planned")), "tone": ""})
 
     return {
         "generated": today.isoformat(),
@@ -348,12 +387,7 @@ def dashboard():
         "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
                      % (total, len(kits), avg),
         "health": "bad" if bad else "ok",
-        "cards": [
-            {"title": "Products", "value": str(total), "tone": ""},
-            {"title": "Kits", "value": str(len(kits)), "tone": "ok"},
-            {"title": "Avg conformance", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
-            {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
-        ],
+        "cards": cards,
         "summary": {"products": total, "kits": len(kits), "avg": avg,
                     "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
         "stats": {"conformance": conf, "categories": cats},
@@ -364,6 +398,7 @@ def dashboard():
         "changes": changes(),
         "automation": autos,
         "roadmap": ROADMAP,
+        "plan": plan,
         "repos": rows,
         "links": {"store": "https://drsamonline.github.io/Matneo/",
                   "hub": "https://drsamonline.github.io/",
