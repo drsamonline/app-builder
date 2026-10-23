@@ -240,7 +240,7 @@ def dashboard():
         rows.append({
             "name": r["name"], "description": r.get("description") or "",
             "pushed_at": r.get("pushed_at"), "homepage": home(r),
-            "html_url": r.get("html_url"), "download": "",
+            "html_url": r.get("html_url"), "download": "", "category": c,
             "status": "%d/5" % s, "status_tone": "ok" if s >= 4 else ("warn" if s >= 3 else "bad"),
         })
         conf[str(s)] = conf.get(str(s), 0) + 1
