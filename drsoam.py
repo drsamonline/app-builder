@@ -208,7 +208,8 @@ def changes():
                     text = (cs[-1].get("message") or "").split("\n")[0][:110]
                 else:
                     br = (p.get("ref") or "").split("/")[-1]
-                    text = "%d commit(s) to %s" % (p.get("size") or 0, br)
+                    n = p.get("size") or p.get("distinct_size") or 0
+                    text = ("%d commit(s) to %s" % (n, br)) if n else ("pushed to " + br)
             elif t == "PullRequestEvent":
                 text = (p.get("action", "") + ": " + ((p.get("pull_request") or {}).get("title") or ""))[:110]
             elif t == "IssuesEvent":
