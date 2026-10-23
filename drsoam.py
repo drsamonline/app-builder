@@ -16,7 +16,7 @@ Dependency-free. Set GH_TOKEN to raise the API rate limit.
 
 MIT License. (c) 2026 Dr Sohil Momin.
 """
-import json, os, re, sys, urllib.request, urllib.parse, datetime
+import base64, json, os, re, sys, urllib.request, urllib.parse, datetime
 from collections import Counter
 
 OWNER = "drsamonline"
@@ -46,14 +46,22 @@ UTILITIES = {"offline-pdf-toolkit", "CLDR", "TTB", "All4ONE", "ULTIMATE-WINDOWS-
 FEATURED = {"today-card", "kent-repertory-explorer", "bmi-bmr-tdee-macros-fluid-calculator"}
 
 
+_CACHE = {}
+
+
 def _get(url):
+    # in-process memo: one fetch per URL per run (fewer API calls, faster)
+    if url in _CACHE:
+        return _CACHE[url]
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                "User-Agent": "drsoam"})
     tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if tok:
         req.add_header("Authorization", "Bearer " + tok)
     with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+        data = json.load(r)
+    _CACHE[url] = data
+    return data
 
 
 def repos():
@@ -75,18 +83,36 @@ def _kits():
 
 
 def products(rs=None):
-    """The product repos: live, not meta, not a kit."""
+    """The product repos: live, not meta, not a kit.
+
+    A repo whose name ends in '-kit' is ALWAYS a kit - that naming rule means a
+    new kit can never leak into the products list even if the registry lags.
+    """
     kits = _kits()
-    return [r for r in (rs or repos()) if r["name"] not in META and r["name"] not in kits]
+    return [r for r in (rs or repos())
+            if r["name"] not in META and r["name"] not in kits and not r["name"].endswith("-kit")]
 
 
 def kit_list():
-    """The kits, from the registry's deps.json (the source of truth)."""
+    """The kits, from the registry's deps.json (the source of truth).
+
+    Reads via the authenticated contents API (the registry is private), and
+    accepts either shape: a list of ids, or a list of {id,status} objects.
+    Always unioned with the built-in KITS, so a kit can never be missed.
+    """
+    ids = set(KITS)
     try:
-        d = _get("https://raw.githubusercontent.com/%s/registry/main/deps.json" % OWNER)
-        return [k for k in d.get("kits", []) if k.get("status") == "live"]
+        d = _get("https://api.github.com/repos/%s/registry/contents/deps.json" % OWNER)
+        raw = base64.b64decode((d.get("content") or "").replace("\n", "")).decode("utf-8")
+        for k in json.loads(raw).get("kits", []):
+            if isinstance(k, str):
+                ids.add(k)
+            elif isinstance(k, dict) and str(k.get("status", "live")) == "live":
+                ids.add(k.get("id") or k.get("name"))
     except Exception:
-        return [{"id": k} for k in sorted(KITS)]
+        pass
+    ids.discard(None)
+    return [{"id": k} for k in sorted(ids)]
 
 
 def category(n):
@@ -108,45 +134,6 @@ def first_sentence(s):
 
 def pages_url(n):
     return "https://drsamonline.github.io/%s/" % n
-
-
-def repo_cover(n):
-    """A cover image taken from the repository itself.
-
-    Prefers a screenshot / preview / cover / social / banner / hero image that
-    sits shallow in the tree, and ignores logos, icons, favicons, sprites and
-    anything under test / vendor / build / mod directories. Falls back to
-    GitHub's own auto-generated repo card. Returns "" only if nothing is found.
-    """
-    import json as _json, os as _os, urllib.request as _u
-    bad_dir = ("/test", "test/", "tests/", "/spec", "spec/", "node_modules", "vendor", "third_party",
-               "dist/", "build/", ".github/", "coverage", "mods/", "/fixtures")
-    bad_name = ("favicon", "icon", "logo", "sprite", "apple-touch", "badge", "screenshot-2")
-    prefer = ("screenshot", "preview", "cover", "social", "banner", "hero", "shot", "demo")
-    for ref in ("main", "master"):
-        try:
-            u = "https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1" % (OWNER, n, ref)
-            req = _u.Request(u, headers={"User-Agent": "drsoam", "Accept": "application/vnd.github+json"})
-            tok = _os.environ.get("GH_TOKEN")
-            if tok:
-                req.add_header("Authorization", "Bearer %s" % tok)
-            d = _json.loads(_u.urlopen(req, timeout=25).read())
-        except Exception:
-            continue
-        imgs = []
-        for x in d.get("tree", []):
-            p = x.get("path", "")
-            lp = p.lower()
-            if x.get("type") != "blob" or not lp.endswith((".png", ".jpg", ".jpeg", ".webp")):
-                continue
-            if any(b in lp for b in bad_name) or any(b in lp for b in bad_dir):
-                continue
-            imgs.append(p)
-        if not imgs:
-            break
-        imgs.sort(key=lambda p: (0 if any(k in p.lower() for k in prefer) else 1, p.count("/"), len(p)))
-        return "https://raw.githubusercontent.com/%s/%s/HEAD/%s" % (OWNER, n, imgs[0])
-    return "https://opengraph.githubassets.com/1/%s/%s" % (OWNER, n)
 
 
 def shot(n):
@@ -239,7 +226,8 @@ def changes():
                     text = (cs[-1].get("message") or "").split("\n")[0][:110]
                 else:
                     br = (p.get("ref") or "").split("/")[-1]
-                    text = "%d commit(s) to %s" % (p.get("size") or 0, br)
+                    n = p.get("size") or p.get("distinct_size") or 0
+                    text = ("%d commit(s) to %s" % (n, br)) if n else ("pushed to " + br)
             elif t == "PullRequestEvent":
                 text = (p.get("action", "") + ": " + ((p.get("pull_request") or {}).get("title") or ""))[:110]
             elif t == "IssuesEvent":
@@ -296,11 +284,17 @@ def dashboard():
         d = (today - datetime.timedelta(days=i)).isoformat()
         activity.append({"date": d, "count": day_counts.get(d, 0)})
 
+    pushed_today = {}
+    for r in rs:
+        if (r.get("pushed_at") or "")[:10] == today.isoformat():
+            pushed_today[r["name"]] = 1
+
     autos = automation()
     bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
 
     return {
         "generated": today.isoformat(),
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
                      % (total, len(kits), avg),
         "health": "bad" if bad else "ok",
@@ -311,7 +305,7 @@ def dashboard():
             {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
         ],
         "summary": {"products": total, "kits": len(kits), "avg": avg,
-                    "pushes": sum(a["count"] for a in activity)},
+                    "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
         "attention": attention(),
@@ -337,7 +331,7 @@ def store():
         lic = (r.get("license") or {}).get("spdx_id") if r.get("license") else "MIT"
         desc = r.get("description") or ""
         cat.append({"id": n.lower(), "title": n, "category": category(n), "type": "open-source",
-                    "price": "Free", "link": home(r), "landingPage": home(r), "image": repo_cover(n) or shot(n),
+                    "price": "Free", "link": home(r), "landingPage": home(r), "image": shot(n),
                     "sourceRepo": "%s/%s" % (OWNER, n), "license": lic or "MIT",
                     "tagline": first_sentence(desc), "description": desc,
                     "tags": (r.get("topics") or [])[:4] or [category(n)],
@@ -366,7 +360,7 @@ def posts():
         desc = (r.get("description") or "").strip()
         out.append({"title": first_sentence(desc) or n, "repo": n, "category": "App update",
                     "date": (r.get("pushed_at") or "")[:10], "summary": desc,
-                    "url": home(r), "source": r.get("html_url"), "image": repo_cover(n) or shot(n), "kind": "update"})
+                    "url": home(r), "source": r.get("html_url"), "image": shot(n), "kind": "update"})
     out.sort(key=lambda p: p["date"], reverse=True)
     return {"generated": datetime.date.today().isoformat(), "posts": out[:24]}
 
@@ -417,7 +411,24 @@ AUTOMATIONS = [
 
 
 def automation():
-    """For each self-updating workflow: its schedule and its most recent run."""
+    """For each self-updating workflow: its schedule and its most recent run.
+
+    Batched: ONE /actions/runs call per repo, then match each workflow by name -
+    instead of one call per workflow.
+    """
+    repos_needed = sorted({a["repo"] for a in AUTOMATIONS})
+    latest = {}
+    for repo in repos_needed:
+        if repo in ("registry", "forge", "knowledge"):
+            continue  # private: the dashboard token cannot read their runs
+        try:
+            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=40")
+            for w in d.get("workflow_runs") or []:
+                key = (repo, (w.get("name") or "").strip())
+                if key not in latest:
+                    latest[key] = w
+        except Exception:
+            pass
     out = []
     for a in AUTOMATIONS:
         rec = dict(a)
@@ -427,21 +438,35 @@ def automation():
         rec["conclusion"] = "no runs yet"
         if a["repo"] in ("registry", "forge", "knowledge"):
             rec["conclusion"] = "scheduled (private repo)"
-            out.append(rec)
-            continue
-        try:
-            d = _get("https://api.github.com/repos/%s/%s/actions/workflows/%s/runs?per_page=1"
-                     % (OWNER, a["repo"], a["file"]))
-            runs = d.get("workflow_runs") or []
-            if runs:
-                w = runs[0]
+        else:
+            w = latest.get((a["repo"], a["name"]))
+            if w:
                 rec["last_run"] = w.get("updated_at") or w.get("created_at")
                 rec["conclusion"] = w.get("conclusion") or w.get("status") or "?"
                 rec["url"] = w.get("html_url") or rec["url"]
-        except Exception:
-            rec["conclusion"] = "unknown"
         out.append(rec)
     return out
+
+
+def esc_xml(s):
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def rss(items):
+    """A tiny RSS feed of the recent-activity list (subscribable)."""
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<rss version="2.0"><channel>',
+           '<title>drsamonline — what changed</title>',
+           '<link>https://drsamonline.github.io/dashboard/</link>',
+           '<description>Recent pushes, pull requests and releases across drsamonline.</description>',
+           '<lastBuildDate>' + now + '</lastBuildDate>']
+    for c in items or []:
+        title = "%s — %s" % (c.get("repo", ""), c.get("text") or c.get("type", ""))
+        out.append("<item><title>%s</title><description>%s</description><guid>%s</guid><pubDate>%s</pubDate></item>"
+                   % (esc_xml(title), esc_xml(c.get("text", "")),
+                      esc_xml(c.get("repo", "") + "-" + str(c.get("when", ""))), esc_xml(c.get("when") or now)))
+    out.append("</channel></rss>")
+    return "\n".join(out) + "\n"
 
 
 def write(path, obj):
@@ -464,9 +489,14 @@ def main():
         data = dashboard()
         snap = {"date": data["generated"], "products": data["summary"]["products"],
                 "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
-                "pushes": data["summary"]["pushes"]}
-        data["history"] = update_history(snap)
+                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"]}
+        hist = update_history(snap)
+        data["history"] = hist
+        for row in data["repos"]:
+            row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
         write("data.json", data)
+        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
+        write("feed.xml", rss(data["changes"]))
     elif mode == "store":
         data = store()
         write("docs/data/products.json", data)
