@@ -262,6 +262,7 @@ def dashboard():
 
     return {
         "generated": today.isoformat(),
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
                      % (total, len(kits), avg),
         "health": "bad" if bad else "ok",
