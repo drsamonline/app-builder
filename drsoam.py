@@ -133,6 +133,7 @@ def dashboard():
             {"title": "Forge", "value": "live", "tone": "ok"},
         ],
         "repos": rows,
+        "automation": automation(),
         "links": {"store": "https://drsamonline.github.io/Matneo/",
                   "forge": "https://github.com/%s/forge" % OWNER,
                   "registry": "https://github.com/%s/registry" % OWNER,
@@ -208,6 +209,46 @@ def plan_status(path):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
     print("plan status updated")
+
+
+# ---- automation status (what self-updates, and when it last ran) -----------
+AUTOMATIONS = [
+    {"repo": "drsamonline.github.io", "file": "refresh-hub.yml", "name": "Refresh project hub", "what": "the project hub", "schedule": "daily 03:17 UTC"},
+    {"repo": "drsamonline", "file": "update-profile.yml", "name": "Update profile README", "what": "the profile README", "schedule": "daily 03:17 UTC"},
+    {"repo": "dashboard", "file": "refresh.yml", "name": "Refresh dashboard data", "what": "this dashboard", "schedule": "daily 03:47 UTC"},
+    {"repo": "drsamonline", "file": "metrics.yml", "name": "Metrics", "what": "the metric cards", "schedule": "daily 04:00 UTC"},
+    {"repo": "Matneo", "file": "blog.yml", "name": "Refresh blog posts", "what": "the blog", "schedule": "daily 04:12 UTC"},
+    {"repo": "Matneo", "file": "store.yml", "name": "Refresh store catalogue", "what": "the store", "schedule": "daily 04:22 UTC"},
+    {"repo": "knowledge", "file": "refresh.yml", "name": "Refresh plan status", "what": "the plan", "schedule": "daily 04:32 UTC"},
+    {"repo": "registry", "file": "refresh.yml", "name": "Refresh registry", "what": "the registry", "schedule": "daily 04:42 UTC"},
+    {"repo": "app-builder", "file": "kit-tests.yml", "name": "All kit tests", "what": "every kit's tests", "schedule": "daily 05:00 UTC"},
+    {"repo": "skills", "file": "refresh.yml", "name": "refresh", "what": "the skills catalogue", "schedule": "weekly (Mon)"},
+    {"repo": "forge", "file": "heartbeat.yml", "name": "Heartbeat", "what": "the control plane", "schedule": "daily 06:00 UTC"},
+]
+
+
+def automation():
+    """For each self-updating workflow: its schedule and its most recent run."""
+    out = []
+    for a in AUTOMATIONS:
+        rec = dict(a)
+        rec["repo_url"] = "https://github.com/%s/%s" % (OWNER, a["repo"])
+        rec["url"] = "%s/actions/workflows/%s" % (rec["repo_url"], a["file"])
+        rec["last_run"] = None
+        rec["conclusion"] = "no runs yet"
+        try:
+            d = _get("https://api.github.com/repos/%s/%s/actions/workflows/%s/runs?per_page=1"
+                     % (OWNER, a["repo"], a["file"]))
+            runs = d.get("workflow_runs") or []
+            if runs:
+                w = runs[0]
+                rec["last_run"] = w.get("updated_at") or w.get("created_at")
+                rec["conclusion"] = w.get("conclusion") or w.get("status") or "?"
+                rec["url"] = w.get("html_url") or rec["url"]
+        except Exception:
+            rec["conclusion"] = "unknown"
+        out.append(rec)
+    return out
 
 
 def write(path, obj):
