@@ -155,6 +155,76 @@ def attention():
         return []
 
 
+def controls():
+    """Deep-links to each workflow's page, where "Run workflow" dispatches it."""
+    return [{"label": a["name"], "what": a["what"],
+             "url": "https://github.com/%s/%s/actions/workflows/%s" % (OWNER, a["repo"], a["file"])}
+            for a in AUTOMATIONS]
+
+
+def quota():
+    """Actions budget. Public repos are free; the private repos draw on 2,000 min/month."""
+    out = {"available": False, "included_minutes": 2000,
+           "note": "Actions minutes are free on public repos; the private repos draw on the free 2,000 min/month."}
+    try:
+        d = _get("https://api.github.com/users/%s/settings/billing/actions" % OWNER)
+        out["available"] = True
+        out["used_minutes"] = d.get("total_minutes_used")
+        out["included_minutes"] = d.get("included_minutes") or 2000
+    except Exception:
+        out["note"] += " (needs a billing-scoped token to read the live number.)"
+    try:
+        runs = 0
+        for repo in ("forge", "registry", "knowledge"):
+            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=1")
+            runs += int(d.get("total_count") or 0)
+        out["private_runs"] = runs
+    except Exception:
+        out["private_runs"] = None
+    return out
+
+
+def changes():
+    """A recent-activity feed: pushes, PRs and releases across the account."""
+    try:
+        d = _get("https://api.github.com/users/%s/events" % OWNER + "?" + "per_page=30")
+        out = []
+        for e in d:
+            t = e.get("type") or ""
+            repo = (e.get("repo") or {}).get("name", "").split("/")[-1]
+            p = e.get("payload") or {}
+            text = ""
+            if t == "PushEvent":
+                cs = p.get("commits") or []
+                text = ((cs[-1].get("message") if cs else "") or "").split("\n")[0][:110]
+            elif t == "PullRequestEvent":
+                text = (p.get("action", "") + ": " + ((p.get("pull_request") or {}).get("title") or ""))[:110]
+            elif t == "IssuesEvent":
+                text = (p.get("action", "") + ": " + ((p.get("issue") or {}).get("title") or ""))[:110]
+            out.append({"type": t.replace("Event", ""), "repo": repo,
+                        "when": e.get("created_at"), "text": text})
+        return out[:20]
+    except Exception:
+        return []
+
+
+def update_history(snap):
+    """Append today's snapshot to history.json (idempotent), so the charts can
+    show change over weeks instead of a single day."""
+    hist = []
+    if os.path.exists("history.json"):
+        try:
+            hist = json.load(open("history.json", encoding="utf-8")).get("history", [])
+        except Exception:
+            hist = []
+    hist = [h for h in hist if h.get("date") != snap["date"]]
+    hist.append(snap)
+    hist.sort(key=lambda h: h["date"])
+    hist = hist[-90:]
+    write("history.json", {"generated": snap["date"], "history": hist})
+    return hist
+
+
 def dashboard():
     rs = repos()
     prods = products(rs)
@@ -197,9 +267,14 @@ def dashboard():
             {"title": "Avg conformance", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
             {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
         ],
+        "summary": {"products": total, "kits": len(kits), "avg": avg,
+                    "pushes": sum(a["count"] for a in activity)},
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
         "attention": attention(),
+        "controls": controls(),
+        "quota": quota(),
+        "changes": changes(),
         "automation": autos,
         "roadmap": ROADMAP,
         "repos": rows,
@@ -343,7 +418,12 @@ def main():
         sys.exit(2)
     mode = sys.argv[1]
     if mode == "dashboard":
-        write("data.json", dashboard())
+        data = dashboard()
+        snap = {"date": data["generated"], "products": data["summary"]["products"],
+                "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
+                "pushes": data["summary"]["pushes"]}
+        data["history"] = update_history(snap)
+        write("data.json", data)
     elif mode == "store":
         data = store()
         write("docs/data/products.json", data)
