@@ -16,7 +16,7 @@ Dependency-free. Set GH_TOKEN to raise the API rate limit.
 
 MIT License. (c) 2026 Dr Sohil Momin.
 """
-import json, os, re, sys, urllib.request, datetime
+import json, os, re, sys, urllib.request, urllib.parse, datetime
 from collections import Counter
 
 OWNER = "drsamonline"
@@ -137,6 +137,24 @@ ROADMAP = [
 ]
 
 
+def attention():
+    """Open pull requests and issues that need the owner (the approvals inbox)."""
+    try:
+        q = urllib.parse.quote("is:open user:" + OWNER)
+        url = "https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=20"
+        d = _get(url)
+        out = []
+        for i in d.get("items") or []:
+            out.append({"title": i.get("title") or "",
+                        "repo": (i.get("repository_url") or "").rsplit("/", 1)[-1],
+                        "url": i.get("html_url"),
+                        "kind": "PR" if i.get("pull_request") else "issue",
+                        "created": i.get("created_at")})
+        return out
+    except Exception:
+        return []
+
+
 def dashboard():
     rs = repos()
     prods = products(rs)
@@ -181,6 +199,7 @@ def dashboard():
         ],
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
+        "attention": attention(),
         "automation": autos,
         "roadmap": ROADMAP,
         "repos": rows,
