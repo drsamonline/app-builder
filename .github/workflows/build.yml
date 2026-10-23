@@ -44,6 +44,8 @@ jobs:
         with: { python-version: '3.12' }
       - run: python -m pip install --upgrade pip pyinstaller
       - shell: bash
+        env:
+          APP_NAME: ${{ inputs.app_name }}
         run: |
           rm -rf builder/exe/app && mkdir -p builder/exe/app
           cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
