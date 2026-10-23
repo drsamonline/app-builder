@@ -356,6 +356,34 @@ def plan_block(rs=None):
 
 
 
+def paused():
+    """Projects deliberately parked — NOT deleted, and not lost.
+
+    paused.json ships WITH the dashboard (public), exactly like plan.json, so
+    there is no token and no API call. A parked project keeps its spec and its
+    study doc; this only records why it stopped and what would resume it, so it
+    is visible on the console instead of being forgotten in a backlog.
+    """
+    if not os.path.exists("paused.json"):
+        return []
+    try:
+        d = json.load(open("paused.json", encoding="utf-8"))
+    except Exception:
+        return []
+    out = []
+    for i in (d.get("items") or []):
+        out.append({
+            "id": i.get("id") or "",
+            "name": i.get("name") or i.get("id") or "",
+            "what": i.get("what") or "",
+            "why": i.get("why") or "",
+            "resume": i.get("resume") or "",
+            "spec": i.get("spec") or "",
+            "since": i.get("since") or "",
+        })
+    return out
+
+
 def traffic(rs=None):
     """Views, clones, referrers and popular pages (GitHub keeps only 14 days).
 
@@ -518,6 +546,7 @@ def dashboard():
         "automation": autos,
         "roadmap": ROADMAP,
         "plan": plan,
+        "paused": paused(),
         "community": community(rs),
         "traffic": traffic(rs),
         "repos": rows,
