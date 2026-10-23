@@ -208,8 +208,9 @@ def quota():
         out["available"] = True
         out["used_minutes"] = d.get("total_minutes_used")
         out["included_minutes"] = d.get("included_minutes") or 2000
-    except Exception:
-        out["note"] += " Add a classic PAT with the 'user' scope as the BILLING_TOKEN secret to read the live number."
+    except Exception as e:
+        out["note"] += (" The BILLING_TOKEN call failed (%s). It must be a CLASSIC PAT with the 'user' scope."
+                         % str(e)[:120])
     try:
         runs = 0
         for repo in ("forge", "registry", "knowledge"):
