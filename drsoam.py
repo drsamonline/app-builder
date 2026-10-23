@@ -305,33 +305,54 @@ def update_history(snap):
 
 
 
-def plan_block():
+def plan_block(rs=None):
     """Built vs planned — the idea list reconciled against the live repos.
 
-    plan.json lives in the PRIVATE registry repo, so this needs a token (the same
-    one the budget panel uses). If it can't be read, the block is omitted rather
-    than guessed.
+    plan.json ships WITH the dashboard (public), so there is no token and no API
+    call: the console owns the plan and reconciles it against the repo list it
+    already fetches. The idea list is a FORWARD plan and the live repos are what
+    exists, so the overlap is reported honestly rather than pretended away.
     """
-    tok = os.environ.get("BILLING_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not tok:
+    if not os.path.exists("plan.json"):
         return None
     try:
-        d = _auth_get("https://api.github.com/repos/%s/registry/contents/plan.json" % OWNER, tok)
-        plan = json.loads(base64.b64decode(d["content"]).decode("utf-8"))
+        plan = json.load(open("plan.json", encoding="utf-8"))
     except Exception:
         return None
-    rec = plan.get("reconciled") or {}
-    if not rec:
+    apps = plan.get("apps") or []
+    if not apps:
         return None
-    return {
-        "planned": rec.get("planned"),
-        "built": rec.get("built"),
-        "unbuilt": rec.get("unbuilt"),
-        "live_products": rec.get("live_products"),
-        "live_not_planned": rec.get("live_not_planned"),
-        "link": "https://github.com/%s/registry/blob/main/plan.json" % OWNER,
-    }
 
+    def sl(s):
+        return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", (s or "").lower())).strip("-")
+
+    live = {}
+    for r in (rs or repos()):
+        n = r["name"]
+        if n in META or n.endswith("-kit"):
+            continue
+        live[sl(n)] = n
+
+    built = 0
+    for a in apps:
+        s = sl(a.get("slug") or a.get("name"))
+        if s in live:
+            a["built"] = True
+            a["repo"] = live[s]
+            built += 1
+        else:
+            a["built"] = False
+
+    planned_slugs = {sl(a.get("name")) for a in apps}
+    not_planned = [n for s, n in live.items() if s not in planned_slugs]
+    return {
+        "planned": len(apps),
+        "built": built,
+        "unbuilt": len(apps) - built,
+        "live_products": len(live),
+        "live_not_planned": len(not_planned),
+        "link": "https://github.com/%s/dashboard/blob/main/plan.json" % OWNER,
+    }
 
 def dashboard():
     rs = repos()
@@ -370,7 +391,7 @@ def dashboard():
 
     autos = automation()
     bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
-    plan = plan_block()
+    plan = plan_block(rs)
 
     cards = [
         {"title": "Products", "value": str(total), "tone": ""},
