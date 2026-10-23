@@ -354,6 +354,62 @@ def plan_block(rs=None):
         "link": "https://github.com/%s/dashboard/blob/main/plan.json" % OWNER,
     }
 
+
+def community(rs=None):
+    """What OTHER people did: stars, forks and watchers — and who forked what.
+
+    The counts come free with the repo list. The per-fork detail is fetched ONLY
+    for repos that actually have forks, so this costs almost nothing while the
+    projects are young, and stays correct once they aren't.
+    """
+    rs = rs or repos()
+    tot = {"stars": 0, "forks": 0, "watchers": 0}
+    out, detail = [], {}
+    for r in rs:
+        n = r["name"]
+        if n in META:
+            continue
+        st = r.get("stargazers_count") or 0
+        fk = r.get("forks_count") or 0
+        wt = r.get("subscribers_count") or r.get("watchers_count") or 0
+        tot["stars"] += st
+        tot["forks"] += fk
+        tot["watchers"] += wt
+        if st or fk or wt:
+            out.append({"name": n, "stars": st, "forks": fk, "watchers": wt,
+                        "html_url": r.get("html_url")})
+        if fk:
+            url = ("https://api.github.com/repos/%s/%s/forks" % (OWNER, n)
+                   + "?" + "per_page=100" + "&" + "sort=newest")
+            try:
+                detail[n] = [{"who": (f.get("owner") or {}).get("login"),
+                              "full_name": f.get("full_name"),
+                              "url": f.get("html_url"),
+                              "stars": f.get("stargazers_count") or 0,
+                              "created": (f.get("created_at") or "")[:10]}
+                             for f in (_get(url) or [])]
+            except Exception:
+                detail[n] = []
+    out.sort(key=lambda x: (x["stars"], x["forks"]), reverse=True)
+
+    # issues and pull requests opened by someone OTHER than the owner
+    ext = {"issues": 0, "prs": 0, "items": []}
+    try:
+        q = urllib.parse.quote("is:open user:%s -author:%s" % (OWNER, OWNER))
+        d = _get("https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=10")
+        for i in (d.get("items") or []):
+            ext["prs" if i.get("pull_request") else "issues"] += 1
+            ext["items"].append({"title": i.get("title") or "",
+                                 "repo": (i.get("repository_url") or "").rsplit("/", 1)[-1],
+                                 "url": i.get("html_url"),
+                                 "who": (i.get("user") or {}).get("login") or ""})
+    except Exception:
+        pass
+
+    return {"totals": tot, "repos": out, "forks": detail,
+            "forked_repos": sum(1 for v in detail.values() if v), "external": ext}
+
+
 def dashboard():
     rs = repos()
     prods = products(rs)
@@ -420,6 +476,7 @@ def dashboard():
         "automation": autos,
         "roadmap": ROADMAP,
         "plan": plan,
+        "community": community(rs),
         "repos": rows,
         "links": {"store": "https://drsamonline.github.io/Matneo/",
                   "hub": "https://drsamonline.github.io/",
@@ -601,6 +658,7 @@ def main():
         for row in data["repos"]:
             row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
         write("data.json", data)
+        write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
         write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
         write("feed.xml", rss(data["changes"]))
     elif mode == "store":
