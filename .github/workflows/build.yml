@@ -292,6 +292,24 @@ jobs:
             echo "::error::deploy_path '${{ inputs.deploy_path }}' does not exist"
             exit 1
           fi
+      - name: Enable Pages if it is not on yet
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -uo pipefail
+          # A BRAND-NEW REPO HAS NO PAGES SITE. `configure-pages` then dies with
+          #   ##[error]Get Pages site failed ... Error: Not Found
+          # and the whole pipeline goes red on a repo that is perfectly fine - the
+          # deploy was simply never switched on. The pipeline should be able to
+          # finish on a repo it has just been given, so turn it on here.
+          # Already-on is not a failure, so it is reported and ignored.
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
+            echo "Pages is already enabled"
+          elif gh api -X POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1; then
+            echo "Pages enabled (source: GitHub Actions)"
+          else
+            echo "::warning title=Pages not enabled::could not enable Pages from here. Set Settings > Pages > Source = GitHub Actions, and this deploy will go through."
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: "${{ inputs.deploy_path }}" }
