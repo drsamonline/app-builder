@@ -1,0 +1,62 @@
+# Reusable Pages: deploy a directory to GitHub Pages, on every push.
+#
+# SPDX-FileCopyrightText: 2026 Dr Sohil Momin
+# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
+#
+# WHY THIS LIVES IN THE PUBLIC app-builder KIT:
+# a PUBLIC repo can only call a reusable workflow that is ALSO public. This file
+# previously lived only in the private `forge` repo, so no public app repo could
+# ever call it - which is why app demos went stale while their sources updated.
+#
+# THE CALLER MUST GRANT THE PERMISSIONS. A reusable workflow cannot raise its own
+# permissions above the caller's. Every calling job needs:
+#
+#   permissions:
+#     contents: write     # (only if the caller also commits)
+#     pages: write
+#     id-token: write
+#
+# and a call like:
+#
+#   pages:
+#     uses: drsamonline/app-builder/.github/workflows/pages.yml@main
+#     with:
+#       path: docs
+name: pages
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: "Directory to publish (default: docs)"
+        required: false
+        type: string
+        default: docs
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail early if there is nothing to publish
+        run: |
+          if [ ! -d "${{ inputs.path }}" ]; then
+            echo "::error::path '${{ inputs.path }}' does not exist - nothing to deploy"
+            exit 1
+          fi
+          if [ ! -f "${{ inputs.path }}/index.html" ]; then
+            echo "::warning::no index.html in '${{ inputs.path }}'"
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: "${{ inputs.path }}" }
+      - id: deployment
+        uses: actions/deploy-pages@v4
