@@ -80,10 +80,15 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   exe:
     name: Portable EXE (Windows)
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with: { path: app-repo }
@@ -120,6 +125,7 @@ jobs:
   apk:
     name: Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with: { path: app-repo }
@@ -157,6 +163,7 @@ jobs:
   linux:
     name: Portable binary (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # The builder already produces a native binary on POSIX (build.py picks the
     # --add-data separator from os.name) - it was just never wired in, so Linux
     # users had nothing to download. Same source, same launcher, one more artefact.
@@ -215,6 +222,7 @@ jobs:
   version:
     name: Version and changelog
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # runs in parallel with the builds; it only touches VERSION, CHANGELOG.md and
     # changes/, and its commit carries [skip ci] so it cannot re-trigger itself.
     if: github.event_name != 'pull_request'
@@ -248,6 +256,7 @@ jobs:
   release:
     name: Publish the rolling release
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # EVERY build must succeed. No `if: always()` - a failed build must never
     # touch the published release.
     needs: [exe, apk, linux]
@@ -280,6 +289,7 @@ jobs:
   pages:
     name: Deploy the demo
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # deploy only from main, and only after the release landed - so the live demo
     # and the released build are always the same commit
     needs: [release]
@@ -322,6 +332,7 @@ jobs:
   shot:
     name: Screenshot the live demo
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # AFTER the deploy, so the picture cannot show an older build than the one you
     # can download. It never fails the pipeline for a missing screenshot - a broken
     # picture must not block a release.

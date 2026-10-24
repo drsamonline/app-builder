@@ -24,6 +24,7 @@
 #       path: docs
 name: pages
 on:
+  workflow_dispatch: {}
   workflow_call:
     inputs:
       path:
@@ -44,6 +45,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Fail early if there is nothing to publish
