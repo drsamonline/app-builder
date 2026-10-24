@@ -64,3 +64,69 @@ def _days(iso: str | None) -> float | None:
     return (NOW - t).total_seconds() / 86400
 
 
+def score(r: dict) -> dict:
+    """The heuristic score, broken out so a UI can show WHY a repo ranks where it does."""
+    lic = (r.get("license") or "").lower()
+    pushed, created = _days(r.get("pushed_at") or r.get("pushed")), _days(r.get("created_at") or r.get("created"))
+    releases = int(r.get("releases") or 0)
+    rel_age = _days(r.get("latest_release_at") or r.get("released_at"))
+
+    aspects = {
+        "homepage and description": bool(r.get("homepage")) and bool(r.get("description")),
+        "has a licence": bool(lic),
+        "commonly used licence": lic in COMMON_LICENCES,
+        "multiple releases": releases > 1,
+        "semver-stable releases": bool(r.get("semver")),
+        "release under 6 months old": rel_age is not None and rel_age < 182,
+        "updated in the last 3 months": pushed is not None and pushed < 91,
+        "older than 6 months": created is not None and created > 182,
+    }
+
+    def lg(n):
+        n = max(int(n or 0), 0)
+        return math.log(n / 2) if n > 0 else 0.0
+
+    metrics = {
+        "stars": lg(r.get("stars") or r.get("stargazers_count")),
+        "forks": lg(r.get("forks") or r.get("forks_count")),
+        "watchers": lg(r.get("watchers") or r.get("subscribers_count")) - 1,
+        "commits": lg(r.get("commits")) - 1,
+        "contributors": lg(r.get("contributors")) - 1,
+    }
+    # a metric the source does not carry must not silently count as zero - it is skipped
+    metrics = {k: v for k, v in metrics.items() if v != -1.0 or k not in ("watchers", "commits", "contributors")}
+
+    total = sum(1 for v in aspects.values() if v) + sum(metrics.values())
+    return {"score": round(total, 2),
+            "aspects": aspects,
+            "metrics": {k: round(v, 2) for k, v in metrics.items()},
+            "quality": round(total, 2)}
+
+
+def activity(r: dict) -> float:
+    """The second axis: how much has changed recently. 0-100, from the push age alone.
+
+    Deliberately simple and honest: we do not have commit counts in the repo list, so
+    this is derived from recency rather than pretending to be a commit velocity.
+    """
+    d = _days(r.get("pushed_at") or r.get("pushed"))
+    if d is None:
+        return 0.0
+    if d <= 1:
+        return 100.0
+    if d >= 365:
+        return 0.0
+    return round(100.0 * (1 - math.log(1 + d) / math.log(366)), 1)
+
+
+def movement(name: str, now: int, hist: list[dict], window_days: int = WINDOW_DAYS) -> dict:
+    """Gained / lost / unchanged over the NAMED window, from history snapshots."""
+    if not hist:
+        return {"delta": 0, "previous": None, "window_days": window_days, "basis": "no history"}
+    cutoff = (NOW - dt.timedelta(days=window_days)) if NOW else None
+    past = None
+    for snap in hist:
+        ts = snap.get("at") or snap.get("date") or ""
+        try:
+            t = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except Exception:
