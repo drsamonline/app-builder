@@ -130,3 +130,23 @@ def movement(name: str, now: int, hist: list[dict], window_days: int = WINDOW_DA
         try:
             t = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
         except Exception:
+            continue
+        if cutoff and t <= cutoff:
+            past = snap
+    if past is None:
+        past = hist[0] if len(hist) > 1 else None
+    if past is None:
+        return {"delta": 0, "previous": None, "window_days": window_days, "basis": "one snapshot only"}
+    prev = (past.get("stars") or {}).get(name)
+    if prev is None:
+        return {"delta": None, "previous": None, "window_days": window_days, "basis": "added since the last snapshot"}
+    return {"delta": now - int(prev), "previous": int(prev), "window_days": window_days, "basis": "snapshot"}
+
+
+def build(repos: list[dict], history: list[dict]) -> dict:
+    rows = []
+    for r in repos:
+        if not isinstance(r, dict):
+            continue
+        name = r.get("name") or r.get("key")
+        if not name:
