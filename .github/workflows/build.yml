@@ -136,6 +136,39 @@ jobs:
           name: android-apk
           path: out/${{ inputs.app_name }}.apk
 
+  version:
+    name: Version and changelog
+    runs-on: ubuntu-latest
+    # runs in parallel with the builds; it only touches VERSION, CHANGELOG.md and
+    # changes/, and its commit carries [skip ci] so it cannot re-trigger itself.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: "${{ inputs.kit_repo }}", path: .tools }
+      - name: Consume the pending change files
+        id: cl
+        env:
+          CHANGELOG_DIR: "."
+        run: python3 .tools/tools/changelog.py
+      - name: Commit the version and the changelog
+        if: steps.cl.outputs.released == 'true'
+        run: |
+          git config user.name  "forge-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add VERSION CHANGELOG.md changes
+          git commit -m "chore(release): v${{ steps.cl.outputs.version }} [skip ci]"
+          git push
+      - name: Publish the versioned release
+        if: steps.cl.outputs.released == 'true'
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          tag="v${{ steps.cl.outputs.version }}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+                 --title "$tag" --notes-file .release-notes.md
+
   release:
     name: Publish the rolling release
     runs-on: ubuntu-latest
