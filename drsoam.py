@@ -585,7 +585,12 @@ def leaderboard(rs=None):
             hist = h if isinstance(h, list) else (h.get("history") or h.get("snapshots") or [])
     except Exception:
         pass
-    return m.build(rs, hist)
+    # A tool bug must DEGRADE the console, not break it. The first version wrapped only
+    # the import, so an int() crash inside build() took the whole refresh down with it.
+    try:
+        return m.build(rs, hist)
+    except Exception as e:
+        return {"error": f"leaderboard failed: {type(e).__name__}: {e}"}
 
 
 def store():
