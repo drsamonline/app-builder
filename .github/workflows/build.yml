@@ -59,6 +59,11 @@ on:
         required: false
         type: string
         default: ""
+      release_tag:
+        description: "Release tag to publish to. Multi-app repos must set a distinct tag per app."
+        required: false
+        type: string
+        default: ${{ inputs.release_tag }}
       kit_repo:
         required: false
         type: string
@@ -152,12 +157,12 @@ jobs:
           # NEVER delete the release first. Create it only if it is missing, then
           # upload with --clobber. A failure here leaves the previous release
           # intact, which the old delete-then-create could not promise.
-          gh release view app-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create app-latest --repo "$GITHUB_REPOSITORY" \
-                 --title "Latest build" --notes "Rolling build of the newest commit on main."
-          gh release upload app-latest --repo "$GITHUB_REPOSITORY" --clobber \
+          gh release view "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
+                 --title "Latest build: ${APP_NAME}" --notes "Rolling build of the newest commit on main."
+          gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber \
             "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk"
-          gh release edit app-latest --repo "$GITHUB_REPOSITORY" \
+          gh release edit "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
             --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe, ${APP_NAME}.apk."
           echo "### Released ${APP_NAME} from ${SHA}" >> "$GITHUB_STEP_SUMMARY"
 
