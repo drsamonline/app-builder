@@ -44,6 +44,8 @@ apk/
     src/main/assets/www/                    # <-- the app's HTML is copied here by the workflow
 keystore/
   debug.keystore     # shared debug-grade signing key (see below)
+tools/
+  verify_exe.py      # inspects the built EXE: valid PE, executable, size budget, imports
 examples/
   build-apps.yml     # the workflow a consuming repo drops into .github/workflows/
 README.md
@@ -105,6 +107,13 @@ falls back to the script directory when run as a plain script.
 bundles the app folder as `app`. It uses the correct `--add-data` separator for
 the platform (`;` on Windows, `:` elsewhere). Set `APP_NAME` in the environment
 before running it.
+
+Every build **inspects the EXE before it ships it.** `tools/verify_exe.py` reads
+the PE and asserts it is a valid PE, an executable, within a size budget, and
+imports nothing unexpected — then prints the machine, subsystem, size and imports
+to the build log, so the record shows what actually shipped. `MAX_EXE_MB`,
+`REQUIRED_IMPORTS` and `FORBIDDEN_IMPORTS` (and `SIGNED_REQUIRED=1`) tune the
+assertions per app.
 
 ---
 
