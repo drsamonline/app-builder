@@ -54,6 +54,23 @@ COMMON_LICENCES = {"mit", "bsd-2-clause", "bsd-3-clause", "apache-2.0", "cc0-1.0
 NOW = None                           # set in main so a run is reproducible
 
 
+def _int(v, default=0):
+    """Read a number, or return the default.
+
+    OUR OWN DATA DOES NOT MATCH THE SHAPE I ASSUMED. In repos.json, `releases` is the
+    URL of the releases page - 'https://github.com/.../releases' - not a count. The
+    first version called int() on it and crashed the whole console refresh with
+    `invalid literal for int() with base 10: 'https://...'`.
+
+    A value we cannot read as a number is UNKNOWN, not zero, and it must never be a
+    crash. The aspect it feeds is then honestly False rather than confidently wrong.
+    """
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _days(iso: str | None) -> float | None:
     if not iso or NOW is None:
         return None
@@ -68,11 +85,11 @@ def score(r: dict) -> dict:
     """The heuristic score, broken out so a UI can show WHY a repo ranks where it does."""
     lic = (r.get("license") or "").lower()
     pushed, created = _days(r.get("pushed_at") or r.get("pushed")), _days(r.get("created_at") or r.get("created"))
-    releases = int(r.get("releases") or 0)
+    releases = _int(r.get("releases"))          # a URL in our data, not a count
     rel_age = _days(r.get("latest_release_at") or r.get("released_at"))
 
     aspects = {
-        "homepage and description": bool(r.get("homepage")) and bool(r.get("description")),
+        "homepage and description": bool(r.get("homepage") or r.get("landing")) and bool(r.get("description") or r.get("desc")),
         "has a licence": bool(lic),
         "commonly used licence": lic in COMMON_LICENCES,
         "multiple releases": releases > 1,
@@ -87,11 +104,11 @@ def score(r: dict) -> dict:
         return math.log(n / 2) if n > 0 else 0.0
 
     metrics = {
-        "stars": lg(r.get("stars") or r.get("stargazers_count")),
-        "forks": lg(r.get("forks") or r.get("forks_count")),
-        "watchers": lg(r.get("watchers") or r.get("subscribers_count")) - 1,
-        "commits": lg(r.get("commits")) - 1,
-        "contributors": lg(r.get("contributors")) - 1,
+        "stars": lg(_int(r.get("stars") or r.get("stargazers_count"))),
+        "forks": lg(_int(r.get("forks") or r.get("forks_count"))),
+        "watchers": lg(_int(r.get("watchers") or r.get("subscribers_count"))) - 1,
+        "commits": lg(_int(r.get("commits"))) - 1,
+        "contributors": lg(_int(r.get("contributors"))) - 1,
     }
     # a metric the source does not carry must not silently count as zero - it is skipped
     metrics = {k: v for k, v in metrics.items() if v != -1.0 or k not in ("watchers", "commits", "contributors")}
@@ -140,7 +157,7 @@ def movement(name: str, now: int, hist: list[dict], window_days: int = WINDOW_DA
     prev = (past.get("stars") or {}).get(name)
     if prev is None:
         return {"delta": None, "previous": None, "window_days": window_days, "basis": "added since the last snapshot"}
-    return {"delta": now - int(prev), "previous": int(prev), "window_days": window_days, "basis": "snapshot"}
+    return {"delta": now - _int(prev), "previous": _int(prev), "window_days": window_days, "basis": "snapshot"}
 
 
 def build(repos: list[dict], history: list[dict]) -> dict:
@@ -152,12 +169,12 @@ def build(repos: list[dict], history: list[dict]) -> dict:
         if not name:
             continue
         s = score(r)
-        stars = int(r.get("stars") or r.get("stargazers_count") or 0)
+        stars = _int(r.get("stars") or r.get("stargazers_count"))
         rows.append({
             "name": name,
             "stars": stars,
-            "views": int(r.get("views") or 0),
-            "clones": int(r.get("clones") or 0),
+            "views": _int(r.get("views")),
+            "clones": _int(r.get("clones")),
             "quality": s["quality"],
             "activity": activity(r),
             "aspects": s["aspects"],
@@ -270,7 +287,7 @@ def main() -> int:
     for row in out["rows"][:8]:
         print("  #%-3d %-30s quality=%-6.2f activity=%-5.1f stars=%-6d %+d/%dd" % (
             row["rank"], row["name"][:30], row["quality"], row["activity"], row["stars"],
-            row["movement"].get("delta") or 0, row["window_days"]))
+            row["movement"].get("delta") or 0, out["window_days"]))
     print("  up: %s | down: %s | added: %s" % (len(out["up"]), len(out["down"]), len(out["added"])))
     print("wrote %s" % a.out)
     return 0
