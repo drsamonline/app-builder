@@ -616,46 +616,81 @@ def leaderboard(rs=None):
         return {"error": f"leaderboard failed: {type(e).__name__}: {e}"}
 
 
+# --------------------------------------------------------------------------- #
+# WHAT MATNEO SELLS
+#
+# The store listed every repo as "Free / open-source", so it was SELLING NOTHING
+# while looking like a shop - 46 free apps presented as a catalogue. The commercial
+# plan is explicit: you sell FORGE (the control plane), and "the apps remain your
+# free, open brand". So the catalogue is the LICENCE, and the apps belong to the hub.
+#
+# The prices are deliberately NOT invented here: the plan sets the tiers and leaves
+# the numbers to TERMS.md, so the store says "Paid" and links to the terms.
+# --------------------------------------------------------------------------- #
+HUB = "https://drsamonline.github.io/"
+
+FOR_SALE = [
+    {"id": "forge-personal", "title": "Forge — Personal licence", "category": "Licence",
+     "type": "licence", "price": "Free", "link": HUB, "landingPage": HUB,
+     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "tagline": "Use Forge on your own non-commercial repos.",
+     "description": "Run the whole system — the workflows, the kits, the queue, the console — "
+                    "on your own non-commercial repositories. Attribution required; no resale.",
+     "tags": ["licence", "personal"], "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": True},
+    {"id": "forge-commercial", "title": "Forge — Commercial licence", "category": "Licence",
+     "type": "licence", "price": "Paid", "link": HUB, "landingPage": HUB,
+     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "tagline": "Use Forge in commercial work, for one entity.",
+     "description": "For companies, freelancers and client work: use Forge in commercial projects "
+                    "for one entity. Terms and pricing are in TERMS.md.",
+     "tags": ["licence", "commercial"], "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": True},
+    {"id": "forge-reseller", "title": "Forge — Reseller / OEM licence", "category": "Licence",
+     "type": "licence", "price": "Paid", "link": HUB, "landingPage": HUB,
+     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "tagline": "Bundle Forge into your own product.",
+     "description": "Embed Forge in something you ship and resell. A higher tier, with terms and "
+                    "pricing in TERMS.md.",
+     "tags": ["licence", "oem"], "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": False},
+]
+
+
 def store():
-    cat = []
-    for r in products():
-        n = r["name"]
-        lic = (r.get("license") or {}).get("spdx_id") if r.get("license") else "MIT"
-        desc = r.get("description") or ""
-        cat.append({"id": n.lower(), "title": n, "category": category(n), "type": "open-source",
-                    "price": "Free", "link": home(r), "landingPage": home(r), "image": shot(n),
-                    "sourceRepo": "%s/%s" % (OWNER, n), "license": lic or "MIT",
-                    "tagline": first_sentence(desc), "description": desc,
-                    "tags": (r.get("topics") or [])[:4] or [category(n)],
-                    "buyLinks": [], "rating": {"avg": 0, "count": 0},
-                    "featured": n in FEATURED})
-    # a couple of hand-made apps that live outside the raw list
-    for extra in (("today-card", "HTML Apps", "One card for the day: your date, one intention, one task, and a streak."),
-                  ("seance", "HTML Apps", "Sealed notes, opened once — Strongbox's sealed-note app.")):
-        if not any(p["id"] == extra[0] for p in cat):
-            cat.append({"id": extra[0], "title": extra[0], "category": extra[1], "type": "open-source",
-                        "price": "Free", "link": pages_url(extra[0]), "landingPage": pages_url(extra[0]),
-                        "image": shot(extra[0]), "sourceRepo": "%s/%s" % (OWNER, extra[0]), "license": "MIT",
-                        "tagline": extra[2], "description": extra[2], "tags": [extra[1]],
-                        "buyLinks": [], "rating": {"avg": 0, "count": 0},
-                        "featured": extra[0] in FEATURED})
+    """The catalogue: WHAT IS FOR SALE.
+
+    It used to be every repo, each hard-coded "Free / open-source" - a shop selling
+    nothing, with 46 free apps presented as products. The apps are free and they
+    belong to the hub; this catalogue is the licence.
+    """
+    cat = [dict(x) for x in FOR_SALE]
     ids = [p["id"] for p in cat]
     assert len(ids) == len(set(ids)), "duplicate id in catalogue"
     cat.sort(key=lambda p: (not p.get("featured"), p["title"].lower()))
     return cat
 
-
 def posts():
-    out = []
-    for r in products():
-        n = r["name"]
-        desc = (r.get("description") or "").strip()
-        out.append({"title": first_sentence(desc) or n, "repo": n, "category": "App update",
-                    "date": (r.get("pushed_at") or "")[:10], "summary": desc,
-                    "url": home(r), "source": r.get("html_url"), "image": shot(n), "kind": "update"})
-    out.sort(key=lambda p: p["date"], reverse=True)
-    return {"generated": datetime.date.today().isoformat(), "posts": out[:24]}
+    """The product blog: posts about WHAT MATNEO SELLS.
 
+    It used to emit one post per repo - 24 free-app announcements, which is a
+    changelog of free things, not a product blog. Matneo carries no free-repo
+    posts: those listings belong to the hub. Every post here is about something
+    the shop actually offers.
+    """
+    out = []
+    for p in store():
+        out.append({
+            "title": p["title"],
+            "repo": p["id"],
+            "category": "For sale" if p["price"] != "Free" else "Licence",
+            "date": datetime.date.today().isoformat(),
+            "summary": p.get("description") or p.get("tagline") or "",
+            "url": p.get("link") or HUB,
+            "source": p.get("sourceRepo") or "",
+            "image": p.get("image") or "",
+            "kind": "product",
+            "price": p.get("price") or "",
+        })
+    out.sort(key=lambda p: (p["price"] == "Free", p["title"]))
+    return {"generated": datetime.date.today().isoformat(), "posts": out}
 
 def plan_status(path):
     """Rewrite the plan's FORGE:STATUS block from live data (kits included)."""
