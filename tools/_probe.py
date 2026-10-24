@@ -156,3 +156,9 @@ def build(repos: list[dict], history: list[dict]) -> dict:
         rows.append({
             "name": name,
             "stars": stars,
+            "views": int(r.get("views") or 0),
+            "clones": int(r.get("clones") or 0),
+            "quality": s["quality"],
+            "activity": activity(r),
+            "aspects": s["aspects"],
+            "movement": movement(name, stars, history),
