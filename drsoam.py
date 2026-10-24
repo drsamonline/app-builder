@@ -547,6 +547,7 @@ def dashboard():
         "roadmap": ROADMAP,
         "plan": plan,
         "paused": paused(),
+        "leaderboard": leaderboard(rs),
         "community": community(rs),
         "traffic": traffic(rs),
         "repos": rows,
@@ -557,6 +558,34 @@ def dashboard():
                   "knowledge": "https://github.com/%s/knowledge" % OWNER,
                   "actions": "https://github.com/%s?tab=repositories" % OWNER},
     }
+
+
+
+# ---- the leaderboard: rank, and MOVEMENT (tools/leaderboard.py) -------------
+# A ranking table is static; movement is the useful part, and the console already keeps
+# history.json, so it is computable from data we already store. The score is a HEURISTIC
+# and is shown only relative to our own repos - never as an absolute.
+def leaderboard(rs=None):
+    """The ranked rows plus the movement, computed by the shared tool."""
+    import importlib.util, pathlib, datetime as _dt
+    p = pathlib.Path(__file__).with_name("tools") / "leaderboard.py"
+    if not p.exists():
+        p = pathlib.Path(__file__).parent / "leaderboard.py"
+    try:
+        spec = importlib.util.spec_from_file_location("leaderboard", p)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    except Exception as e:
+        return {"error": f"leaderboard tool unavailable: {type(e).__name__}"}
+    m.NOW = _dt.datetime.now(_dt.timezone.utc)
+    rs = rs if rs is not None else repos()
+    hist = []
+    try:
+        if os.path.exists("history.json"):
+            h = json.load(open("history.json", encoding="utf-8"))
+            hist = h if isinstance(h, list) else (h.get("history") or h.get("snapshots") or [])
+    except Exception:
+        pass
+    return m.build(rs, hist)
 
 
 def store():
