@@ -162,3 +162,9 @@ def build(repos: list[dict], history: list[dict]) -> dict:
             "activity": activity(r),
             "aspects": s["aspects"],
             "movement": movement(name, stars, history),
+            "url": r.get("homepage") or r.get("html_url") or "",
+        })
+    rows.sort(key=lambda x: (-x["quality"], -x["stars"]))
+    for i, row in enumerate(rows, 1):
+        row["rank"] = i
+    return {
