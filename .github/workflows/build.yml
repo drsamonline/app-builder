@@ -98,7 +98,10 @@ jobs:
           rm -rf builder/exe/app && mkdir -p builder/exe/app
           cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
           APP_NAME="${{ inputs.app_name }}" python builder/exe/build.py
-          exe="$(ls builder/exe/dist/*portable*.exe 2>/dev/null | head -1 || true)"
+          # a glob loop, not `ls | head -1`: a filename with a newline breaks the
+          # pipeline (SC2012), and a build directory is exactly where such a name appears
+          exe=""
+          for f in builder/exe/dist/*portable*.exe; do [ -e "$f" ] && exe="$f" && break; done
           if [ -z "$exe" ]; then echo "no portable exe was produced"; ls -la builder/exe/dist || true; exit 1; fi
           mkdir -p out && cp "$exe" "out/${{ inputs.app_name }}-portable.exe"
           ls -la out
