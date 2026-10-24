@@ -2,10 +2,15 @@ name: All kit tests
 
 # One place to see every kit green. Runs each kit's headless test in parallel.
 #
-# FIXED: the matrix was hard-coded to 12 kits, but the account has 15 - so
-# export-kit, frame-kit and profile-kit were NEVER tested. The matrix is now
-# DISCOVERED from the account at run time, so a new kit is covered the day it is
-# created and this list can never go stale again.
+# FIXED (2026-10-24): this workflow was FAILING on every run, and the dashboard showed
+# it as "All kit tests - failure", which reads as "every kit's test is failing". It was
+# not the kits. Discovery called `gh api user/repos`, and the built-in GITHUB_TOKEN is
+# scoped to THIS repository - it cannot list the user's repos - so the call failed, the
+# `|| echo '[]'` swallowed it, and `fromJSON('[]')` produced an EMPTY MATRIX. A matrix
+# with no values fails the job, so a discovery bug looked like a test failure.
+#
+# Two fixes: read the PUBLIC repo list (`users/<owner>/repos`, which any token can read),
+# and REFUSE to run an empty matrix with an error that says so.
 
 on:
   schedule:
@@ -26,7 +31,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          kits="$(gh api 'user/repos?per_page=100' --paginate                   --jq '[.[] | select(.name | endswith("-kit")) | .name] | sort | @json' 2>/dev/null || echo '[]')"
+          kits="$(gh api 'users/drsamonline/repos?per_page=100' --paginate --slurp \
+                    --jq '[.[][] | select(.name | endswith("-kit")) | .name] | sort | @json')"
+          if [ -z "$kits" ] || [ "$kits" = "[]" ]; then
+            echo "::error title=kit discovery found nothing::the discovery returned no kits. Refusing to run an empty matrix, which fails with a message that looks like a test failure."
+            exit 1
+          fi
           echo "kits=$kits" >> "$GITHUB_OUTPUT"
           echo "Discovered kits: $kits"
 
