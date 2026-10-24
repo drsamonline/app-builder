@@ -187,7 +187,7 @@ jobs:
       - name: Smoke-test it - it must actually SERVE the app
         run: |
           set -uo pipefail
-          ./out/${{ inputs.app_name }}-linux > /tmp/run.log 2>&1 &
+          PYTHONUNBUFFERED=1 ./out/${{ inputs.app_name }}-linux > /tmp/run.log 2>&1 &
           pid=$!
           url=""
           for _ in $(seq 1 25); do
@@ -196,7 +196,10 @@ jobs:
             sleep 1
           done
           if [ -z "$url" ]; then
-            echo "::error::the Linux binary never printed a URL"; cat /tmp/run.log; kill $pid 2>/dev/null || true; exit 1
+            echo "::error::the Linux binary never printed a URL in 25s"
+            echo "--- what it printed (or did not) ---"; cat /tmp/run.log || true
+            echo "--- is it running? ---"; ps -p $pid >/dev/null 2>&1 && echo "yes, pid $pid alive" || echo "no, it exited"
+            kill $pid 2>/dev/null || true; exit 1
           fi
           code="$(curl -s -o /tmp/page.html -w '%{http_code}' "$url/" || echo 000)"
           kill $pid 2>/dev/null || true

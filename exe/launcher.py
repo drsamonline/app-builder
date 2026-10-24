@@ -49,8 +49,16 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> int:
+    # Python BLOCK-buffers stdout when it is not a terminal, so when this is run
+    # with its output redirected (`./app-linux > run.log &`) the banner - including
+    # the URL - sat in the buffer and never appeared. Anything that supervises this
+    # binary (a smoke test, a wrapper script, a log) was blind to it. Line-buffer.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    except Exception:
+        pass
     if not os.path.isdir(APP_DIR):
-        print("ERROR: bundled 'app' folder not found at:", APP_DIR)
+        print("ERROR: bundled 'app' folder not found at:", APP_DIR, flush=True)
         try:
             input("Press Enter to exit...")
         except EOFError:
@@ -63,9 +71,9 @@ def main() -> int:
     handler = functools.partial(QuietHandler, directory=APP_DIR)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
 
-    print("=" * 60)
+    print("=" * 60, flush=True)
     print(" Serving :", APP_DIR)
-    print(" URL     :", url)
+    print(" URL     :", url, flush=True)
     print(" The app should open in your browser automatically.")
     print(" Close this window (or press Ctrl+C) to stop the server.")
     print("=" * 60)
