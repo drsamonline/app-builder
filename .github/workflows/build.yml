@@ -63,7 +63,7 @@ on:
         description: "Release tag to publish to. Multi-app repos must set a distinct tag per app."
         required: false
         type: string
-        default: ${{ inputs.release_tag }}
+        default: app-latest
       kit_repo:
         required: false
         type: string
