@@ -152,16 +152,39 @@ def score(r):
 
 # ---- the four outputs -------------------------------------------------------
 # ---- the roadmap shown on the console ("next to come") ---------------------
-ROADMAP = [
-    {"what": "Retrofit — adopt the kits into the apps that duplicate them", "state": "in progress",
-     "link": "https://github.com/drsamonline/forge"},
-    {"what": "Kits queued — audio, date, convert, image, chart, form, qr, markdown, pdf, table, template, cli, json",
-     "state": "queued", "link": "https://github.com/drsamonline/knowledge"},
-    {"what": "Apps queued — Carrier/Beam (optical), Chalk, Canteen", "state": "queued",
-     "link": "https://github.com/drsamonline/registry"},
-    {"what": "Forge as a licensed product — the commercial pack", "state": "planned",
-     "link": "https://github.com/drsamonline/forge"},
-]
+def roadmap(rs=None):
+    """Next to come — DERIVED from live data, because a hard-coded list goes stale.
+
+    This was a fixed list and it drifted: it still queued `audio-kit` long after
+    audio-kit was built, so the panel told the owner to wait for work already done.
+    A list a human has to remember to edit will always lag; this reads the repos.
+
+    The queue itself lives in the private master list, which the dashboard's token
+    cannot read — so this shows what IS observable and says so, rather than guessing.
+    """
+    rs = rs or repos()
+    kits = sorted(r["name"] for r in rs if r["name"].endswith("-kit"))
+    prods = [r for r in rs if r["name"] not in META]
+    return [
+        {"what": "Kits built — %d: %s" % (len(kits), ", ".join(kits)),
+         "state": "done", "link": "https://github.com/%s?tab=repositories&q=kit" % OWNER},
+        {"what": "Retrofit — adopt a kit into the apps that still hand-roll it. The queue is "
+                 "DERIVED from the audit (registry/audit.json), not from a list someone edits",
+         "state": "in progress", "link": "https://github.com/drsamonline/forge"},
+        {"what": "Apps live — %d products, %d of them pushed in the last 30 days"
+                 % (len(prods), sum(1 for r in prods if (r.get("pushed_at") or "") >= _days_ago(30))),
+         "state": "done", "link": "https://drsamonline.github.io/"},
+        {"what": "The unbuilt queue lives in the master list, which is PRIVATE — the console cannot "
+                 "read it, so it is not shown here rather than shown stale",
+         "state": "not visible", "link": "https://github.com/drsamonline/knowledge"},
+        {"what": "Forge as a licensed product — the commercial pack",
+         "state": "planned", "link": "https://github.com/drsamonline/forge"},
+    ]
+
+
+def _days_ago(n):
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=n)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def attention():
@@ -544,7 +567,7 @@ def dashboard():
         "quota": quota(),
         "changes": changes(),
         "automation": autos,
-        "roadmap": ROADMAP,
+        "roadmap": roadmap(rs),
         "plan": plan,
         "paused": paused(),
         "leaderboard": leaderboard(rs),
@@ -674,7 +697,7 @@ AUTOMATIONS = [
     {"repo": "knowledge", "file": "refresh.yml", "name": "Refresh plan status", "what": "the plan", "schedule": "daily 04:32 UTC"},
     {"repo": "registry", "file": "refresh.yml", "name": "Refresh registry", "what": "the registry", "schedule": "daily 04:42 UTC"},
     {"repo": "app-builder", "file": "kit-tests.yml", "name": "All kit tests", "what": "every kit's tests", "schedule": "daily 05:00 UTC"},
-    {"repo": "skills", "file": "refresh.yml", "name": "refresh", "what": "the skills catalogue", "schedule": "weekly (Mon)"},
+    {"repo": "skills", "file": "validate.yml", "name": "validate skills", "what": "the skills catalogue", "schedule": "weekly (Mon)"},
     {"repo": "forge", "file": "heartbeat.yml", "name": "Heartbeat", "what": "the control plane", "schedule": "daily 06:00 UTC"},
 ]
 
@@ -706,7 +729,12 @@ def automation():
         rec["last_run"] = None
         rec["conclusion"] = "no runs yet"
         if a["repo"] in ("registry", "forge", "knowledge"):
-            rec["conclusion"] = "scheduled (private repo)"
+            # NOT "never ran". The workflow runs; the console simply cannot see it,
+            # because its token reads public repos only. Saying "never" is a lie of
+            # omission - the owner read it as a broken schedule.
+            rec["conclusion"] = "not visible (private repo)"
+            rec["note"] = ("This repository is private, so the console cannot read its run "
+                           "history. That is NOT the same as 'never ran' - open the link to see it.")
         else:
             w = latest.get((a["repo"], a["name"]))
             if w:
