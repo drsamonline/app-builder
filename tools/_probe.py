@@ -144,3 +144,9 @@ def movement(name: str, now: int, hist: list[dict], window_days: int = WINDOW_DA
 
 
 def build(repos: list[dict], history: list[dict]) -> dict:
+    rows = []
+    for r in repos:
+        if not isinstance(r, dict):
+            continue
+        name = r.get("name") or r.get("key")
+        if not name:
