@@ -6,7 +6,7 @@
 # ONE PUSH, ONE PIPELINE, THREE OUTPUTS - and they always come from the same
 # commit, so the release and the live demo can never disagree:
 #
-#   push -> exe + apk -> release (rolling `app-latest`) -> deploy the demo
+#   push -> exe + apk + linux -> release (rolling `app-latest`) -> deploy the demo
 #
 # WHY THIS FILE EXISTS IN THE PUBLIC KIT
 # A public repository can only call a reusable workflow that is ALSO public.
@@ -154,6 +154,61 @@ jobs:
           name: android-apk
           path: out/${{ inputs.app_name }}.apk
 
+  linux:
+    name: Portable binary (Linux)
+    runs-on: ubuntu-latest
+    # The builder already produces a native binary on POSIX (build.py picks the
+    # --add-data separator from os.name) - it was just never wired in, so Linux
+    # users had nothing to download. Same source, same launcher, one more artefact.
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: app-repo }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ inputs.kit_repo }}", path: builder }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python -m pip install --upgrade pip pyinstaller
+      - name: Build the Linux binary
+        run: |
+          set -e
+          rm -rf builder/exe/app && mkdir -p builder/exe/app
+          cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
+          APP_NAME="${{ inputs.app_name }}" python builder/exe/build.py
+          # a glob loop, not `ls | head -1` (SC2012)
+          bin=""
+          for f in builder/exe/dist/*portable*; do [ -e "$f" ] && bin="$f" && break; done
+          if [ -z "$bin" ]; then echo "no linux binary was produced"; ls -la builder/exe/dist || true; exit 1; fi
+          mkdir -p out && cp "$bin" "out/${{ inputs.app_name }}-linux"
+          chmod +x "out/${{ inputs.app_name }}-linux"
+          ls -la out
+      # NOT just "it compiled". The binary serves the app over loopback and opens a
+      # browser; if it cannot serve, it is not a deliverable. Start it, read the URL
+      # it prints, fetch the page, stop it.
+      - name: Smoke-test it - it must actually SERVE the app
+        run: |
+          set -uo pipefail
+          ./out/${{ inputs.app_name }}-linux > /tmp/run.log 2>&1 &
+          pid=$!
+          url=""
+          for _ in $(seq 1 25); do
+            url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' /tmp/run.log | head -1 || true)"
+            [ -n "$url" ] && break
+            sleep 1
+          done
+          if [ -z "$url" ]; then
+            echo "::error::the Linux binary never printed a URL"; cat /tmp/run.log; kill $pid 2>/dev/null || true; exit 1
+          fi
+          code="$(curl -s -o /tmp/page.html -w '%{http_code}' "$url/" || echo 000)"
+          kill $pid 2>/dev/null || true
+          echo "served $url -> $code"
+          if [ "$code" != "200" ]; then echo "::error::the binary did not serve the app"; cat /tmp/run.log; exit 1; fi
+          grep -qi "<html" /tmp/page.html || { echo "::error::the served page is not HTML"; exit 1; }
+          echo "the Linux binary serves the app." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-bin
+          path: out/${{ inputs.app_name }}-linux
+
   version:
     name: Version and changelog
     runs-on: ubuntu-latest
@@ -190,15 +245,17 @@ jobs:
   release:
     name: Publish the rolling release
     runs-on: ubuntu-latest
-    # BOTH builds must succeed. No `if: always()` - a failed build must never
+    # EVERY build must succeed. No `if: always()` - a failed build must never
     # touch the published release.
-    needs: [exe, apk]
+    needs: [exe, apk, linux]
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/download-artifact@v4
         with: { name: portable-exe, path: dist }
       - uses: actions/download-artifact@v4
         with: { name: android-apk, path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: linux-bin, path: dist }
       - env:
           GH_TOKEN: "${{ github.token }}"
           APP_NAME: "${{ inputs.app_name }}"
@@ -212,9 +269,9 @@ jobs:
             || gh release create "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
                  --title "Latest build: ${APP_NAME}" --notes "Rolling build of the newest commit on main."
           gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber \
-            "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk"
+            "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk" "dist/${APP_NAME}-linux"
           gh release edit "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
-            --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe, ${APP_NAME}.apk."
+            --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe (Windows), ${APP_NAME}.apk (Android), ${APP_NAME}-linux (Linux)."
           echo "### Released ${APP_NAME} from ${SHA}" >> "$GITHUB_STEP_SUMMARY"
 
   pages:
@@ -240,3 +297,37 @@ jobs:
         with: { path: "${{ inputs.deploy_path }}" }
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  shot:
+    name: Screenshot the live demo
+    runs-on: ubuntu-latest
+    # AFTER the deploy, so the picture cannot show an older build than the one you
+    # can download. It never fails the pipeline for a missing screenshot - a broken
+    # picture must not block a release.
+    needs: [pages]
+    if: github.event_name != 'pull_request' && inputs.deploy_path != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: "${{ inputs.kit_repo }}", path: builder }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm i --no-save puppeteer
+      - name: Capture it, and put it in the README
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -uo pipefail
+          sleep 25   # let Pages publish the deploy we just made
+          node builder/tools/shot.js \
+            --url "https://${{ github.repository_owner }}.github.io/${{ inputs.app_name }}/play/" \
+            --out docs/shot.png --readme README.md
+          git config user.name  "forge-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A docs/shot.png README.md
+          if git diff --cached --quiet; then
+            echo "the screenshot is unchanged"
+          else
+            git commit -m "chore: screenshot of the live demo [skip ci]"
+            git push
+          fi
