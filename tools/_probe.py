@@ -168,3 +168,9 @@ def build(repos: list[dict], history: list[dict]) -> dict:
     for i, row in enumerate(rows, 1):
         row["rank"] = i
     return {
+        "generated": (NOW or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "window_days": WINDOW_DAYS,
+        "axes": ["quality", "activity"],
+        "caveat": ("A heuristic, shown only relative to the other repositories in this "
+                   "list - never an absolute. The formula is chosen by experience; there "
+                   "is no scientific proof it reflects the quality of a project."),
