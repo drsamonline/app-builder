@@ -54,26 +54,43 @@ README.md
 ## How a repo uses the kit
 
 Add `examples/build-apps.yml` as `.github/workflows/build-apps.yml` in your app
-repo and set the two values at the top to match your layout:
+repo and set the three values under `with:` to match your layout:
 
 ```yaml
-env:
-  APP_NAME: my-app        # -> my-app-portable.exe and my-app.apk
-  APP_SRC: docs/play      # folder containing your index.html (+ any assets)
+jobs:
+  app:
+    uses: drsamonline/app-builder/.github/workflows/build.yml@main
+    with:
+      app_name: my-app        # -> my-app-portable.exe and my-app.apk
+      app_src: docs/play      # folder containing your index.html (+ any assets)
+      deploy_path: docs       # folder to publish to Pages ("" = do not deploy)
 ```
 
-Then, on every push to `main` (and on manual `workflow_dispatch`):
+**Call the workflow; do not copy it.** The build, release and deploy live in the
+reusable workflow, so a fix there reaches every app at once. An earlier
+hand-copied version of this file drifted and kept `if: always()` on the release
+job, which *deleted* the published release before recreating it.
 
-1. **`exe` job** (`windows-latest`) checks out your repo **and** this kit,
-   copies `docs/play/` into `exe/app/`, runs `python exe/build.py`, and uploads
-   `<APP_NAME>-portable.exe`.
+The reusable workflow runs, on every push to `main` (and on manual
+`workflow_dispatch`):
+
+1. **`exe` job** (`windows-latest`) checks out your repo **and** this kit, copies
+   `app_src/` into `exe/app/`, runs `python exe/build.py`, and uploads
+   `<app_name>-portable.exe`.
 2. **`apk` job** (`ubuntu-latest`) checks out both, installs the Android SDK
-   packages, copies `docs/play/` into `apk/app/src/main/assets/www/`, and runs
-   `gradle assembleRelease` (via `gradle/actions/setup-gradle`) to produce a
-   signed `<APP_NAME>.apk`.
-3. **`release` job** downloads both artifacts and publishes them on a single
-   fixed-tag release (`app-latest`), deleting any previous one first so that
-   `/releases/latest` always resolves to the newest build.
+   packages, copies `app_src/` into `apk/app/src/main/assets/www/`, and runs
+   `gradle assembleRelease` to produce a signed `<app_name>.apk`.
+3. **`version` job** consumes any `changes/` files and bumps `VERSION` and
+   `CHANGELOG.md`.
+4. **`release` job** publishes both artefacts on a single fixed-tag release
+   (`app-latest`) — created **only if it is missing**, then uploaded with
+   `--clobber`. It never deletes the release first, so a failed build leaves the
+   previous one intact.
+5. **`pages` job** deploys `deploy_path` after the release lands.
+
+A push that touches only root docs/meta (`*.md`, `LICENSE`, `.gitignore`, …) is
+skipped entirely by `paths-ignore`, so a docs-only commit does not run the
+builder.
 
 ### Stable download URLs
 
