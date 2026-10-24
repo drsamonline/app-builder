@@ -1,16 +1,46 @@
-# Reusable build: portable Windows EXE + signed Android APK, then a fixed-tag release.
+# The canonical app pipeline: BUILD + RELEASE + DEPLOY, in one call.
 #
-# Lives in the PUBLIC app-builder kit so that public app repos can call it
-# (a public caller can only use public reusable workflows).
+# SPDX-FileCopyrightText: 2026 Dr Sohil Momin
+# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
 #
-# A consuming app repo calls it in a few lines:
+# ONE PUSH, ONE PIPELINE, THREE OUTPUTS - and they always come from the same
+# commit, so the release and the live demo can never disagree:
 #
+#   push -> exe + apk -> release (rolling `app-latest`) -> deploy the demo
+#
+# WHY THIS FILE EXISTS IN THE PUBLIC KIT
+# A public repository can only call a reusable workflow that is ALSO public.
+# Before this, 28 app repos carried a hand-copied 4.9 kB version of this file and
+# that copy had drifted: it kept `if: always()` on the release job, which DELETED
+# the published release before recreating it - so a failed build destroyed the
+# release instead of merely not updating it. A copy cannot receive a fix. This is
+# the single source of truth; app repos call it and inherit every future fix.
+#
+# THE CALLER MUST GRANT THE PERMISSIONS - a reusable workflow cannot raise its own
+# above the caller's:
+#
+#   permissions:
+#     contents: write    # to publish the release
+#     pages: write       # to deploy the demo
+#     id-token: write    # required by actions/deploy-pages
+#
+# HOW AN APP REPO CALLS IT (this is the whole file):
+#
+#   name: Build + deploy
+#   on:
+#     push: { branches: [ main ] }
+#     pull_request: { branches: [ main ] }
+#     workflow_dispatch:
+#   permissions: { contents: write, pages: write, id-token: write }
+#   concurrency: { group: build, cancel-in-progress: true }
 #   jobs:
-#     build:
+#     app:
 #       uses: drsamonline/app-builder/.github/workflows/build.yml@main
 #       with:
 #         app_name: my-app
-#         app_src: docs
+#         app_src: docs/play
+#         deploy_path: docs
+#       permissions: { contents: write, pages: write, id-token: write }
 
 name: build
 
@@ -21,8 +51,14 @@ on:
         required: true
         type: string
       app_src:
+        description: "Directory holding the app (index.html + assets)"
         required: true
         type: string
+      deploy_path:
+        description: "Directory to publish to Pages. Empty = do not deploy."
+        required: false
+        type: string
+        default: ""
       kit_repo:
         required: false
         type: string
@@ -48,8 +84,6 @@ jobs:
           set -e
           rm -rf builder/exe/app && mkdir -p builder/exe/app
           cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
-          # pass APP_NAME explicitly (do not rely on env propagation), then find
-          # whatever the builder actually produced - its name must not matter.
           APP_NAME="${{ inputs.app_name }}" python builder/exe/build.py
           exe="$(ls builder/exe/dist/*portable*.exe 2>/dev/null | head -1 || true)"
           if [ -z "$exe" ]; then echo "no portable exe was produced"; ls -la builder/exe/dist || true; exit 1; fi
@@ -98,17 +132,55 @@ jobs:
           path: out/${{ inputs.app_name }}.apk
 
   release:
-    name: Publish release
+    name: Publish the rolling release
     runs-on: ubuntu-latest
-    needs: [exe, apk]        # only when BOTH succeeded (no half-built release)
+    # BOTH builds must succeed. No `if: always()` - a failed build must never
+    # touch the published release.
+    needs: [exe, apk]
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/download-artifact@v4
         with: { name: portable-exe, path: dist }
       - uses: actions/download-artifact@v4
         with: { name: android-apk, path: dist }
-      - env: { GH_TOKEN: "${{ github.token }}" }
+      - env:
+          GH_TOKEN: "${{ github.token }}"
+          APP_NAME: "${{ inputs.app_name }}"
+          SHA: "${{ github.sha }}"
         run: |
-          gh release delete app-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
-          gh release create app-latest --repo "${{ github.repository }}" \
-            --title "Latest build" --notes "Automated build from ${{ github.sha }}." \
-            "dist/${{ inputs.app_name }}-portable.exe" "dist/${{ inputs.app_name }}.apk"
+          set -euo pipefail
+          # NEVER delete the release first. Create it only if it is missing, then
+          # upload with --clobber. A failure here leaves the previous release
+          # intact, which the old delete-then-create could not promise.
+          gh release view app-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create app-latest --repo "$GITHUB_REPOSITORY" \
+                 --title "Latest build" --notes "Rolling build of the newest commit on main."
+          gh release upload app-latest --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk"
+          gh release edit app-latest --repo "$GITHUB_REPOSITORY" \
+            --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe, ${APP_NAME}.apk."
+          echo "### Released ${APP_NAME} from ${SHA}" >> "$GITHUB_STEP_SUMMARY"
+
+  pages:
+    name: Deploy the demo
+    runs-on: ubuntu-latest
+    # deploy only from main, and only after the release landed - so the live demo
+    # and the released build are always the same commit
+    needs: [release]
+    if: github.event_name != 'pull_request' && inputs.deploy_path != ''
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail early if there is nothing to publish
+        run: |
+          if [ ! -d "${{ inputs.deploy_path }}" ]; then
+            echo "::error::deploy_path '${{ inputs.deploy_path }}' does not exist"
+            exit 1
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: "${{ inputs.deploy_path }}" }
+      - id: deployment
+        uses: actions/deploy-pages@v4
