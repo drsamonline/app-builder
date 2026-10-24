@@ -174,3 +174,4 @@ def build(repos: list[dict], history: list[dict]) -> dict:
         "caveat": ("A heuristic, shown only relative to the other repositories in this "
                    "list - never an absolute. The formula is chosen by experience; there "
                    "is no scientific proof it reflects the quality of a project."),
+        "movement_note": "Movement is star change over the named window, from our own history snapshots.",
