@@ -1,0 +1,57 @@
+# Reusable test: workflow syntax, internal links, and the repo's own tests.
+#
+# SPDX-FileCopyrightText: 2026 Dr Sohil Momin
+# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
+#
+# FIXED: the name promised "unit tests + link check" and the body only link-checked.
+# It now also validates every workflow's YAML and runs the repo's own test script
+# when there is one. External links are checked but do NOT fail the build - a
+# transient 404 on someone else's site is not our regression.
+name: test
+on:
+  workflow_call:
+    inputs:
+      app_src:
+        required: false
+        type: string
+        default: docs
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Workflow files are valid YAML
+        run: |
+          python3 -m pip install --quiet pyyaml
+          fail=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            if python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$f"; then
+              echo "ok   $f"
+            else
+              echo "::error file=$f::invalid YAML"; fail=1
+            fi
+          done
+          exit $fail
+      - name: The app entry point exists
+        run: |
+          if [ ! -f "${{ inputs.app_src }}/index.html" ]; then
+            echo "::error::${{ inputs.app_src }}/index.html is missing - nothing to ship"
+            exit 1
+          fi
+      - name: Run the repo's own tests, if it has any
+        run: |
+          if [ -f test-node.js ]; then node test-node.js;
+          elif [ -f package.json ]; then npm test --if-present;
+          else echo "no test script in this repo - skipping"; fi
+      - name: Internal links must resolve
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --offline --include-fragments "./**/*.html"
+          fail: true
+      - name: External links (report only)
+        uses: lycheeverse/lychee-action@v2
+        continue-on-error: true
+        with:
+          args: --no-progress --accept 200,429 "./**/*.md"
+          fail: false
