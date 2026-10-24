@@ -69,8 +69,16 @@ on:
         type: string
         default: drsamonline/app-builder
 
+# These MUST be granted here as well as by the caller. A reusable workflow cannot
+# raise its own permissions above the caller's, but its top-level `permissions`
+# block CAPS every job inside it - so declaring only `contents: write` here silently
+# denied the pages job its OIDC token, and the deploy died with:
+#   Error: Unable to get ACTIONS_ID_TOKEN_REQUEST_URL env variable
+#   ##[error]Ensure GITHUB_TOKEN has permission "id-token: write".
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   exe:
