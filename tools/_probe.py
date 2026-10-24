@@ -150,3 +150,9 @@ def build(repos: list[dict], history: list[dict]) -> dict:
             continue
         name = r.get("name") or r.get("key")
         if not name:
+            continue
+        s = score(r)
+        stars = int(r.get("stars") or r.get("stargazers_count") or 0)
+        rows.append({
+            "name": name,
+            "stars": stars,
