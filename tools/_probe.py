@@ -150,3 +150,23 @@ def build(repos: list[dict], history: list[dict]) -> dict:
             continue
         name = r.get("name") or r.get("key")
         if not name:
+            continue
+        s = score(r)
+        stars = int(r.get("stars") or r.get("stargazers_count") or 0)
+        rows.append({
+            "name": name,
+            "stars": stars,
+            "views": int(r.get("views") or 0),
+            "clones": int(r.get("clones") or 0),
+            "quality": s["quality"],
+            "activity": activity(r),
+            "aspects": s["aspects"],
+            "movement": movement(name, stars, history),
+            "url": r.get("homepage") or r.get("html_url") or "",
+        })
+    rows.sort(key=lambda x: (-x["quality"], -x["stars"]))
+    for i, row in enumerate(rows, 1):
+        row["rank"] = i
+    return {
+        "generated": (NOW or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "window_days": WINDOW_DAYS,
