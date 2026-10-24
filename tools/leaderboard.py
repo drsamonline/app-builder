@@ -81,9 +81,26 @@ def _days(iso: str | None) -> float | None:
     return (NOW - t).total_seconds() / 86400
 
 
+def licence(r: dict) -> str:
+    """The licence, as a lowercase string, from EITHER shape.
+
+    Our own data carries it as a string ("mit"). The GitHub API carries it as an
+    OBJECT - {"key": "mit", "spdx_id": "MIT", "name": "MIT License", ...} - and
+    calling .lower() on that is what broke the leaderboard:
+
+        AttributeError: 'dict' object has no attribute 'lower'
+
+    The self-test used the string shape, so it passed while real data failed.
+    """
+    v = r.get("license")
+    if isinstance(v, dict):
+        v = v.get("spdx_id") or v.get("key") or v.get("name") or ""
+    return str(v or "").lower()
+
+
 def score(r: dict) -> dict:
     """The heuristic score, broken out so a UI can show WHY a repo ranks where it does."""
-    lic = (r.get("license") or "").lower()
+    lic = licence(r)
     pushed, created = _days(r.get("pushed_at") or r.get("pushed")), _days(r.get("created_at") or r.get("created"))
     releases = _int(r.get("releases"))          # a URL in our data, not a count
     rel_age = _days(r.get("latest_release_at") or r.get("released_at"))
@@ -223,6 +240,12 @@ def self_test() -> int:
     small = {"name": "small-thriving", "stars": 5000, "forks": 300, "homepage": "https://x", "description": "d",
              "license": "apache-2.0", "releases": 12, "semver": True, "latest_release_at": "2026-09-01T00:00:00Z",
              "pushed_at": "2026-10-20T00:00:00Z", "created_at": "2025-01-01T00:00:00Z"}
+    # BOTH shapes of `license` must score the same, because both arrive in practice.
+    as_obj = dict(big); as_obj["license"] = {"key": "mit", "spdx_id": "MIT", "name": "MIT License"}
+    assert licence(big) == "mit" and licence(as_obj) == "mit", "the licence shapes must agree"
+    assert score(as_obj)["score"] == score(big)["score"], "a dict licence must score like a string one"
+    print("licence: a STRING and the API's OBJECT score identically")
+
     sb, ss = score(big), score(small)
     print("big-dead      (500,000 stars, dead since 2023): %.2f  aspects=%d" % (sb["score"], sum(sb["aspects"].values())))
     print("small-thriving (  5,000 stars, active)        : %.2f  aspects=%d" % (ss["score"], sum(ss["aspects"].values())))
