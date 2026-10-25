@@ -280,8 +280,19 @@ jobs:
           gh release view "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
                  --title "Latest build: ${APP_NAME}" --notes "Rolling build of the newest commit on main."
-          gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber \
-            "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk" "dist/${APP_NAME}-linux"
+          # UPLOAD WHAT EXISTS, not a fixed list of three. The old line named the exe, the
+          # apk and the linux binary unconditionally, so a build that legitimately produced
+          # only two of them FAILED THE WHOLE RELEASE - which is what has been happening to
+          # neon-games/dead-zone. A missing artifact is worth a warning; it is not worth
+          # withholding the release, because the release is also what carries the LICENCE.
+          files=()
+          for f in "dist/${APP_NAME}-portable.exe" "dist/${APP_NAME}.apk" "dist/${APP_NAME}-linux"; do
+            if [ -f "$f" ]; then files+=("$f"); else echo "::warning::missing artifact $f"; fi
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no artifacts at all to publish for ${APP_NAME}"; exit 1
+          fi
+          gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
           gh release edit "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
             --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe (Windows), ${APP_NAME}.apk (Android), ${APP_NAME}-linux (Linux)."
           echo "### Released ${APP_NAME} from ${SHA}" >> "$GITHUB_STEP_SUMMARY"
