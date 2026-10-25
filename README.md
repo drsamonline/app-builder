@@ -7,7 +7,7 @@
 [![Offline](https://img.shields.io/badge/offline-yes-2e7d32?style=flat-square)](https://github.com/drsamonline/app-builder)
 [![Type: shared build kit](https://img.shields.io/badge/type-shared%20build%20kit-586069?style=flat-square)](https://drsamonline.github.io/app-builder/)
 [![Tech: Python + Kotlin](https://img.shields.io/badge/tech-Python%20%2B%20Kotlin-3572A5?style=flat-square)](https://github.com/drsamonline/app-builder)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2e7d32?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-PolyForm Noncommercial-2e7d32?style=flat-square)](LICENSE)
 
 **Landing page:** <https://drsamonline.github.io/app-builder/> &nbsp;·&nbsp; **All projects:** <https://drsamonline.github.io/>
 
