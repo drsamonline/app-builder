@@ -36,8 +36,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          kits="$(gh api 'users/drsamonline/repos?per_page=100' --paginate --slurp \
-                    --jq '[.[][] | select(.name | endswith("-kit")) | .name] | sort | @json')"
+          # `--slurp` CANNOT BE COMBINED WITH `--jq` - gh says so and exits 1. The 2026-10-24
+          # fix introduced that pairing while fixing a different bug, so discovery has been
+          # failing ever since and the dashboard read "All kit tests - failure" while no kit
+          # test ran at all. Ask for the names, then let jq build the array.
+          kits="$(gh api 'users/drsamonline/repos?per_page=100' --paginate \
+                    --jq '.[] | select(.name | endswith("-kit")) | .name' 2>/dev/null \
+                  | jq -R -s -c 'split("\n") | map(select(length>0)) | sort')"
           if [ -z "$kits" ] || [ "$kits" = "[]" ]; then
             echo "::error title=kit discovery found nothing::the discovery returned no kits. Refusing to run an empty matrix, which fails with a message that looks like a test failure."
             exit 1
