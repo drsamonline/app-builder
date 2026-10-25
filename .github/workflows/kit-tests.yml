@@ -65,6 +65,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # A KIT WITH A DEPENDENCY COULD NEVER PASS. ui-kit's test needs jsdom, and this job ran
+      # `node test-node.js` with nothing installed - so its failure was really a missing
+      # `npm install`. The other 18 kits happen to need nothing, which is why it went unseen.
+      - name: Install dependencies, if the kit declares any
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-audit --no-fund --silent || echo "::warning::${{ matrix.kit }}: npm install failed; the test may be missing a dependency"
+          fi
       - name: Run tests
         run: |
           if [ -f test-node.js ]; then node test-node.js
