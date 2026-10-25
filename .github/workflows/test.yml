@@ -1,7 +1,7 @@
 # Reusable test: workflow syntax, internal links, and the repo's own tests.
 #
 # SPDX-FileCopyrightText: 2026 Dr Sohil Momin
-# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #
 # FIXED: the name promised "unit tests + link check" and the body only link-checked.
 # It now also validates every workflow's YAML and runs the repo's own test script

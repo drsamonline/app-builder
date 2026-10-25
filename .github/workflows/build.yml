@@ -1,7 +1,7 @@
 # The canonical app pipeline: BUILD + RELEASE + DEPLOY, in one call.
 #
 # SPDX-FileCopyrightText: 2026 Dr Sohil Momin
-# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #
 # ONE PUSH, ONE PIPELINE, THREE OUTPUTS - and they always come from the same
 # commit, so the release and the live demo can never disagree:

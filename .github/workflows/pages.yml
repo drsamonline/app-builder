@@ -1,7 +1,7 @@
 # Reusable Pages: deploy a directory to GitHub Pages, on every push.
 #
 # SPDX-FileCopyrightText: 2026 Dr Sohil Momin
-# SPDX-License-Identifier: LicenseRef-Forge-Proprietary
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #
 # WHY THIS LIVES IN THE PUBLIC app-builder KIT:
 # a PUBLIC repo can only call a reusable workflow that is ALSO public. This file
