@@ -280,15 +280,23 @@ jobs:
           # the app may be copied into the demo with SEO tags added, so compare the CODE:
           # the kit methods each one calls. A demo missing a method the app uses is a demo
           # running older code.
-          app_calls="$(grep -oE '\b(Export|Loom|Case|CryptoKit|Search|Srs|Game|Art|Audio|Ml|UI|Lan)\.[a-zA-Z]+' "$APP" | sort -u)"
-          demo_calls="$(grep -oE '\b(Export|Loom|Case|CryptoKit|Search|Srs|Game|Art|Audio|Ml|UI|Lan)\.[a-zA-Z]+' "$DEMO" | sort -u)"
-          missing="$(comm -23 <(echo "$app_calls") <(echo "$demo_calls") || true)"
-          if [ -n "$missing" ]; then
-            echo "::error::$DEMO is running OLDER code than $APP. Missing: $(echo $missing | tr '\n' ' ')"
-            echo "Run: python3 forge/tools/app-deliver.py --sync-demos   (or copy the app into the demo)"
-            exit 1
-          fi
-          echo "the demo calls everything the app calls"
+          # The demo IS the app plus an SEO block: strip the block and compare the REST.
+          # The first version compared kit calls and MISSED smartbill-app, whose demo was
+          # missing GSTIN validation and input sanitisation - the app's OWN functions.
+          python3 - "$APP" "$DEMO" <<'PY'
+          import re, sys
+          app = open(sys.argv[1], encoding="utf-8").read()
+          demo = open(sys.argv[2], encoding="utf-8").read()
+          stripped = re.sub(
+              r'<meta name="description"[^>]*>\n?<link rel="canonical"[^>]*>\n?'
+              r'(<meta property="og:[^>]*>\n?)*<meta name="twitter:card"[^>]*>\n?'
+              r'<meta name="robots"[^>]*>\n?', "", demo, count=1)
+          if stripped != app:
+              print("::error::" + sys.argv[2] + " is not the app. Regenerate with: "
+                    "python3 forge/tools/app-deliver.py --sync-demos")
+              sys.exit(1)
+          print("the demo is the app, plus its SEO block")
+          PY
 
   release:
     name: Publish the rolling release
