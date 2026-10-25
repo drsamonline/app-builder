@@ -253,6 +253,43 @@ jobs:
             || gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                  --title "$tag" --notes-file .release-notes.md
 
+  demo:
+    name: The demo must be the app
+    # THE WORKFLOW THAT CAUSES THE DRIFT, CORRECTED.
+    #
+    # docs/play/ is the public demo. Nothing ever compared it to the app, so a change that
+    # reached the app and not the demo left TWO CODE PATHS for one program: a bug fixed in
+    # one was never fixed in the other, and the code the public downloaded was not the code
+    # that was maintained. skin-case-tracker and conqueror-os were both in that state.
+    #
+    # app-deliver now repairs a drifted demo daily. This PREVENTS one: the build fails, so
+    # the change that caused it is the change that fixes it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the demo to the app
+        run: |
+          set -euo pipefail
+          APP="${{ inputs.app_src }}/index.html"
+          DEMO="docs/play/index.html"
+          if [ ! -f "$APP" ]; then echo "no app at $APP"; exit 0; fi
+          if [ ! -f "$DEMO" ]; then
+            echo "::error::$DEMO is missing - the app has no public demo"; exit 1
+          fi
+          # the app may be copied into the demo with SEO tags added, so compare the CODE:
+          # the kit methods each one calls. A demo missing a method the app uses is a demo
+          # running older code.
+          app_calls="$(grep -oE '\b(Export|Loom|Case|CryptoKit|Search|Srs|Game|Art|Audio|Ml|UI|Lan)\.[a-zA-Z]+' "$APP" | sort -u)"
+          demo_calls="$(grep -oE '\b(Export|Loom|Case|CryptoKit|Search|Srs|Game|Art|Audio|Ml|UI|Lan)\.[a-zA-Z]+' "$DEMO" | sort -u)"
+          missing="$(comm -23 <(echo "$app_calls") <(echo "$demo_calls") || true)"
+          if [ -n "$missing" ]; then
+            echo "::error::$DEMO is running OLDER code than $APP. Missing: $(echo $missing | tr '\n' ' ')"
+            echo "Run: python3 forge/tools/app-deliver.py --sync-demos   (or copy the app into the demo)"
+            exit 1
+          fi
+          echo "the demo calls everything the app calls"
+
   release:
     name: Publish the rolling release
     runs-on: ubuntu-latest
