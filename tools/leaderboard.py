@@ -76,6 +76,8 @@ def _days(iso: str | None) -> float | None:
         return None
     try:
         t = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        if t.tzinfo is None:            # a bare timestamp is UTC, not naive
+            t = t.replace(tzinfo=dt.timezone.utc)
     except Exception:
         return None
     return (NOW - t).total_seconds() / 86400
@@ -163,6 +165,8 @@ def movement(name: str, now: int, hist: list[dict], window_days: int = WINDOW_DA
         ts = snap.get("at") or snap.get("date") or ""
         try:
             t = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=dt.timezone.utc)
         except Exception:
             continue
         if cutoff and t <= cutoff:
