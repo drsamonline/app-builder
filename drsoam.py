@@ -49,6 +49,17 @@ FEATURED = {"today-card", "kent-repertory-explorer", "bmi-bmr-tdee-macros-fluid-
 
 _CACHE = {}
 
+# Every URL whose fetch FAILED this run, with the reason. A failed fetch and an
+# empty result are DIFFERENT things: on 2026-10-25 every authenticated call was
+# refused (core quota 0/60) and the module still wrote an empty changes.json and
+# a 335-byte feed.xml over the live ones - it reported "no activity" when the
+# truth was "could not look". Nothing may be published on a failed fetch.
+FAILED = {}
+
+
+class FetchError(RuntimeError):
+    """A fetch that failed. Distinct from a fetch that returned nothing."""
+
 
 def _get(url):
     # in-process memo: one fetch per URL per run (fewer API calls, faster)
@@ -59,8 +70,12 @@ def _get(url):
     tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if tok:
         req.add_header("Authorization", "Bearer " + tok)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.load(r)
+    except Exception as e:
+        FAILED[url] = "%s: %s" % (type(e).__name__, e)
+        raise FetchError(FAILED[url]) from e
     _CACHE[url] = data
     return data
 
@@ -307,7 +322,9 @@ def changes():
                         "when": e.get("created_at"), "text": text})
         return out[:20]
     except Exception:
-        return []
+        # None means COULD NOT LOOK. An empty list would mean "we looked, and
+        # nothing happened" - and publishing that deletes the live feed.
+        return None
 
 
 def update_history(snap):
@@ -745,6 +762,7 @@ def automation():
     """
     repos_needed = sorted({a["repo"] for a in AUTOMATIONS})
     latest = {}
+    unreadable = set()
     for repo in repos_needed:
         if repo in ("registry", "forge", "knowledge"):
             continue  # private: the dashboard token cannot read their runs
@@ -755,7 +773,10 @@ def automation():
                 if key not in latest:
                     latest[key] = w
         except Exception:
-            pass
+            # NOT "no runs yet" - we simply could not look. Saying "never ran"
+            # about a workflow that runs daily is the same lie of omission the
+            # console already had to correct once.
+            unreadable.add(repo)
     out = []
     for a in AUTOMATIONS:
         rec = dict(a)
@@ -770,6 +791,10 @@ def automation():
             rec["conclusion"] = "not visible (private repo)"
             rec["note"] = ("This repository is private, so the console cannot read its run "
                            "history. That is NOT the same as 'never ran' - open the link to see it.")
+        elif a["repo"] in unreadable:
+            rec["conclusion"] = "not readable (fetch failed)"
+            rec["note"] = ("The runs API refused this repository on the last refresh, so this "
+                           "is UNKNOWN - not 'never ran'. It lights up again when the fetch does.")
         else:
             w = latest.get((a["repo"], a["name"]))
             if w:
@@ -812,6 +837,57 @@ def write(path, obj):
     print("wrote", path)
 
 
+def _read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def publish_dashboard(data):
+    """Write the dashboard outputs; return the list of things that could NOT be
+    written truthfully (empty when everything was).
+
+    The rule this exists for: a feed built on a FAILED fetch is not an empty
+    feed. When the activity fetch fails, the feed already published is kept
+    byte-for-byte, and the caller is told - so the run is visibly degraded
+    instead of quietly publishing "nothing happened" over the real history.
+    """
+    degraded = []
+    changes = data.get("changes")
+    fetched = changes is not None   # did we actually LOOK this run?
+    if changes is None:
+        prev = _read_json("changes.json")
+        if (isinstance(prev, dict) and isinstance(prev.get("changes"), list)
+                and os.path.exists("feed.xml")):
+            data["changes"] = prev["changes"]
+            degraded.append("activity feed: the fetch failed, so the published feed was kept as it was")
+        else:
+            degraded.append("activity feed: the fetch failed and there is no published feed to keep")
+
+    snap = {"date": data["generated"], "products": data["summary"]["products"],
+            "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
+            "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"],
+            "stars": data["community"]["totals"]["stars"], "forks": data["community"]["totals"]["forks"],
+            "watchers": data["community"]["totals"]["watchers"]}
+    hist = update_history(snap)
+    data["history"] = hist
+    for row in data["repos"]:
+        row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
+    data["degraded"] = degraded
+    write("data.json", data)
+    write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
+    write("community.json", {"generated": data["generated"], **data["community"]})
+    write("traffic.json", {"generated": data["generated"], **data["traffic"]})
+    if fetched:
+        # only a feed we actually looked at may be rewritten; a reused one stays
+        # byte-for-byte as published
+        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
+        write("feed.xml", rss(data["changes"]))
+    return degraded
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ("dashboard", "store", "posts", "plan"):
         print("usage: drsoam.py <dashboard|store|posts|plan>", file=sys.stderr)
@@ -819,21 +895,13 @@ def main():
     mode = sys.argv[1]
     if mode == "dashboard":
         data = dashboard()
-        snap = {"date": data["generated"], "products": data["summary"]["products"],
-                "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
-                "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"],
-                "stars": data["community"]["totals"]["stars"], "forks": data["community"]["totals"]["forks"],
-                "watchers": data["community"]["totals"]["watchers"]}
-        hist = update_history(snap)
-        data["history"] = hist
-        for row in data["repos"]:
-            row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
-        write("data.json", data)
-        write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
-        write("community.json", {"generated": data["generated"], **data["community"]})
-        write("traffic.json", {"generated": data["generated"], **data["traffic"]})
-        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
-        write("feed.xml", rss(data["changes"]))
+        degraded = publish_dashboard(data)
+        if degraded:
+            for d in degraded:
+                print("::warning::" + d)
+            print("DEGRADED - nothing was invented; the published feed was left as it was",
+                  file=sys.stderr)
+            sys.exit(3)
     elif mode == "store":
         data = store()
         write("docs/data/products.json", data)
