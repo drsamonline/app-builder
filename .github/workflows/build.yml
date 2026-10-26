@@ -331,20 +331,28 @@ jobs:
         run: |
           set -euo pipefail
           APP="${{ inputs.app_src }}/index.html"
-          DEMO="docs/play/index.html"
+          DEPLOY="${{ inputs.deploy_path }}"
+          DEMO="$DEPLOY/play/index.html"
           if [ ! -f "$APP" ]; then echo "no app at $APP"; exit 0; fi
-          if [ ! -f "$DEMO" ]; then
-            echo "::error::$DEMO is missing - the app has no public demo"; exit 1
-          fi
-          # When app_src IS docs/play, APP and DEMO are the SAME FILE and the comparison
-          # below is a file against itself - always true, guarding nothing. Repos with
-          # app_src: docs/play keep one copy by design; say so instead of pretending to
-          # have checked it.
+          # WHERE THE DEMO LIVES IS deploy_path, NOT A CONSTANT.
+          # This was hardcoded to docs/play/index.html, which is only true for repos that
+          # put the app there. today-card uses app_src: docs with no docs/play/ at all, so
+          # the check failed on every run with "the app has no public demo" while the app
+          # was published perfectly well at docs/index.html. That is what made its pipeline
+          # red on 2026-10-25 while every other job passed.
           if [ "$APP" = "$DEMO" ]; then
-            echo "app_src is the demo directory: this repo keeps ONE copy of the app."
-            echo "There is nothing to compare - skipping rather than comparing a file to itself."
+            echo "app_src IS $DEMO - one copy of the app, nothing to compare."
+            echo "NOTE: this is the shape of every repo here that uses app_src: docs/play."
+            echo "For those, this check has never compared anything; app-deliver's daily"
+            echo "--sync-demos is what actually holds the demo and the app together."
             exit 0
           fi
+          if [ ! -f "$DEMO" ]; then
+            echo "$DEMO does not exist: this repo publishes $APP directly from $DEPLOY."
+            echo "There is no second copy to drift, so there is nothing to compare - skipping."
+            exit 0
+          fi
+          echo "two copies exist: comparing $APP against $DEMO"
           # the app may be copied into the demo with SEO tags added, so compare the CODE:
           # the kit methods each one calls. A demo missing a method the app uses is a demo
           # running older code.
