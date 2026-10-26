@@ -14,7 +14,7 @@ diverged (Matneo was excluded in one and not another).
 
 Dependency-free. Set GH_TOKEN to raise the API rate limit.
 
-PolyForm Noncommercial License 1.0.0. (c) 2026 Dr Sohil Momin.
+MIT License. (c) 2026 Dr Sohil Momin.
 """
 import base64, json, os, re, sys, urllib.request, urllib.parse, datetime
 from collections import Counter
@@ -80,10 +80,63 @@ def _get(url):
     return data
 
 
+# What the token could actually see this run. "all" means /user/repos answered with
+# everything the account owns; "public-only" means it could not, and the list below is
+# the narrower truth. Callers publish this, because a count with no scope is a claim.
+SCOPE = "unknown"
+SCOPE_NOTE = ""
+
+
+def _paged(path):
+    """Fetch every page of a list endpoint. Stops on a short page or a failure.
+
+    The old code read ONE page of /users/<owner>/repos with no page parameter at all,
+    so the moment the account passed 100 public repositories the list would have
+    truncated silently - the same defect as the control panel's (F-11).
+    """
+    out, page = [], 1
+    while True:
+        sep = "&" if "?" in path else "?"
+        try:
+            batch = _get("https://api.github.com%s%sper_page=100&page=%d" % (path, sep, page))
+        except FetchError:
+            break
+        if not isinstance(batch, list) or not batch:
+            break
+        out += batch
+        if len(batch) < 100:
+            break
+        page += 1
+        if page > 20:                      # a hard stop, so a bad endpoint cannot loop
+            break
+    return out
+
+
 def repos():
-    """Every live (non-fork) repo, most recently pushed first."""
-    r = _get("https://api.github.com/users/%s/repos?per_page=100&sort=pushed" % OWNER)
-    return [x for x in r if not x.get("fork")]
+    """Every live (non-fork) repo, and an honest statement of what was visible.
+
+    Tries /user/repos first, which returns PRIVATE repositories too - but only when the
+    token is allowed to see them. A repository-scoped GITHUB_TOKEN (what registry and
+    knowledge pass) returns just the calling repository from that endpoint, so the
+    public list is used instead and SCOPE says so. The two are compared rather than
+    assumed, so this is correct with or without a cross-repository token.
+    """
+    global SCOPE, SCOPE_NOTE
+    owned = [x for x in _paged("/user/repos?affiliation=owner&sort=pushed") if not x.get("fork")]
+    public = [x for x in _paged("/users/%s/repos?sort=pushed" % OWNER) if not x.get("fork")]
+    if owned and len(owned) >= len(public):
+        SCOPE = "all"
+        SCOPE_NOTE = "read with a token that can see every repository the account owns"
+        return owned
+    if public:
+        SCOPE = "public-only"
+        SCOPE_NOTE = ("the token cannot see private repositories, so this list is the PUBLIC "
+                      "ones only. Add a cross-repository read token (FANOUT_TOKEN) to the "
+                      "workflow to include them.")
+        return public
+    SCOPE = "failed"
+    SCOPE_NOTE = "neither endpoint returned a repository list"
+    raise FetchError("no repository list from /user/repos or /users/%s/repos" % OWNER)
 
 
 _KIT_IDS = None
@@ -827,13 +880,32 @@ def rss(items):
 
 
 def write(path, obj):
+    """Write a published artifact atomically.
+
+    `open(path, "w")` truncates first and writes second, so a run killed in between
+    left an empty or half-written file where valid JSON used to be - and the workflow
+    then committed it. This writes a sibling temp file and renames it over the target,
+    which is atomic on the same filesystem: a reader sees the old file or the new one,
+    never a fragment.
+    """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        if isinstance(obj, str):
-            f.write(obj)
-        else:
-            json.dump(obj, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            if isinstance(obj, str):
+                f.write(obj)
+            else:
+                json.dump(obj, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     print("wrote", path)
 
 
@@ -876,7 +948,10 @@ def publish_dashboard(data):
     for row in data["repos"]:
         row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
     data["degraded"] = degraded
-    write("data.json", data)
+    # data.json is the index: it names forks.json, community.json, traffic.json,
+    # changes.json and feed.xml, so it is written LAST. Writing it first meant a run
+    # killed between the writes left an index pointing at files that had not been
+    # updated - the page would render last run's numbers under this run's date.
     write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
     write("community.json", {"generated": data["generated"], **data["community"]})
     write("traffic.json", {"generated": data["generated"], **data["traffic"]})
@@ -885,6 +960,7 @@ def publish_dashboard(data):
         # byte-for-byte as published
         write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
         write("feed.xml", rss(data["changes"]))
+    write("data.json", data)
     return degraded
 
 
