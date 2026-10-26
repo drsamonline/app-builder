@@ -81,7 +81,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # SUFFIXED, and it has to be. In a CALLED workflow the github context
+  # reflects the CALLER, so `github.workflow` here is the caller's name. A
+  # caller using the same shape then resolves to the same group, and GitHub
+  # refuses to schedule the run - zero jobs, no log, no check run. That is
+  # how forge/backup.yml failed 40 times. The literal suffix makes this
+  # workflow's group its own.
+  group: ${{ github.workflow }}-${{ github.ref }}-build
   cancel-in-progress: false
 
 jobs:
