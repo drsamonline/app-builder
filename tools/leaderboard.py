@@ -87,7 +87,7 @@ def licence(r: dict) -> str:
     """The licence, as a lowercase string, from EITHER shape.
 
     Our own data carries it as a string ("mit"). The GitHub API carries it as an
-    OBJECT - {"key": "mit", "spdx_id": "MIT", "name": "MIT License", ...} - and
+    OBJECT - {"key": "mit", "spdx_id": "MIT", "name": "PolyForm Noncommercial License 1.0.0", ...} - and
     calling .lower() on that is what broke the leaderboard:
 
         AttributeError: 'dict' object has no attribute 'lower'
@@ -245,7 +245,7 @@ def self_test() -> int:
              "license": "apache-2.0", "releases": 12, "semver": True, "latest_release_at": "2026-09-01T00:00:00Z",
              "pushed_at": "2026-10-20T00:00:00Z", "created_at": "2025-01-01T00:00:00Z"}
     # BOTH shapes of `license` must score the same, because both arrive in practice.
-    as_obj = dict(big); as_obj["license"] = {"key": "mit", "spdx_id": "MIT", "name": "MIT License"}
+    as_obj = dict(big); as_obj["license"] = {"key": "mit", "spdx_id": "MIT", "name": "PolyForm Noncommercial License 1.0.0"}
     assert licence(big) == "mit" and licence(as_obj) == "mit", "the licence shapes must agree"
     assert score(as_obj)["score"] == score(big)["score"], "a dict licence must score like a string one"
     print("licence: a STRING and the API's OBJECT score identically")
