@@ -253,6 +253,65 @@ jobs:
             || gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                  --title "$tag" --notes-file .release-notes.md
 
+  parity:
+    name: A retrofit must not remove a capability
+    # THE PARITY GATE, AS A CHECK.
+    #
+    # HANDOFF rule 1 says the direction is app -> kit, never kit -> app. A direction is
+    # not a check: nothing compared what the app could DO before against what it could do
+    # after, so "the kit is wired in" and "the app is weaker" looked identical. On
+    # read-live-transform-app a retrofit wired export-kit in correctly and then deleted
+    # the guarded fallback that had been performing every export, because the page had
+    # never loaded the kit. It also added a green test asserting the fallback was gone,
+    # so "tests pass" proved nothing.
+    #
+    # This refuses a REMOVAL and says what was removed:
+    #   - an embedded JSON block that no longer parses (this killed that app for five
+    #     hours: two unescaped quotes and the whole script never ran), or whose content
+    #     changed (warning here, fatal when run by hand without --allow-data-change)
+    #   - a call guarded by `if (window.Kit && ...)` that became bare
+    #   - a kit that was available to the page and is now gone
+    #   - a removed function name or element id
+    # Additions never fail it. A retrofit that only adds is always allowed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare the app against its base
+        run: |
+          set -euo pipefail
+          # one source of truth: fetch the tool from the kit, do not carry a copy
+          curl -fsSL -o /tmp/parity.py \
+            "https://raw.githubusercontent.com/${{ inputs.kit_repo }}/main/tools/retrofit-parity.py"
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          BASE="origin/${{ github.base_ref }}"
+          fail=0
+          seen=" "
+          for f in "${{ inputs.app_src }}/index.html" "index.html"; do
+            f="${f#./}"                       # app_src="." would otherwise test twice
+            case "$seen" in *" $f "*) continue ;; esac
+            seen="$seen$f "
+            [ -f "$f" ] || continue
+            if ! git cat-file -e "$BASE:$f" 2>/dev/null; then
+              echo "parity: $f is new on this branch - nothing to compare"
+              continue
+            fi
+            git show "$BASE:$f" > /tmp/before.html
+            if cmp -s /tmp/before.html "$f"; then
+              echo "parity: $f unchanged"
+              continue
+            fi
+            echo "parity: $f"
+            python3 /tmp/parity.py /tmp/before.html "$f" --allow-data-change || fail=1
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::error::this change removed a capability the app already had. Read the report above: a retrofit that removes something is a downgrade, not a retrofit."
+            exit 1
+          fi
+
   demo:
     name: The demo must be the app
     # THE WORKFLOW THAT CAUSES THE DRIFT, CORRECTED.
@@ -276,6 +335,15 @@ jobs:
           if [ ! -f "$APP" ]; then echo "no app at $APP"; exit 0; fi
           if [ ! -f "$DEMO" ]; then
             echo "::error::$DEMO is missing - the app has no public demo"; exit 1
+          fi
+          # When app_src IS docs/play, APP and DEMO are the SAME FILE and the comparison
+          # below is a file against itself - always true, guarding nothing. Repos with
+          # app_src: docs/play keep one copy by design; say so instead of pretending to
+          # have checked it.
+          if [ "$APP" = "$DEMO" ]; then
+            echo "app_src is the demo directory: this repo keeps ONE copy of the app."
+            echo "There is nothing to compare - skipping rather than comparing a file to itself."
+            exit 0
           fi
           # the app may be copied into the demo with SEO tags added, so compare the CODE:
           # the kit methods each one calls. A demo missing a method the app uses is a demo
