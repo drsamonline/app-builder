@@ -56,6 +56,12 @@ _CACHE = {}
 # truth was "could not look". Nothing may be published on a failed fetch.
 FAILED = {}
 
+# Things this run could NOT do, published rather than swallowed. The dashboard is the
+# estate's public face: a number on it must mean "this is what I measured", never "this is
+# what happened to fit in a quota". Each entry below was an `except: pass` that turned a
+# failure into a plausible-looking zero.
+DEGRADED = []
+
 
 class FetchError(RuntimeError):
     """A fetch that failed. Distinct from a fetch that returned nothing."""
@@ -178,8 +184,13 @@ def kit_list():
                 ids.add(k)
             elif isinstance(k, dict) and str(k.get("status", "live")) == "live":
                 ids.add(k.get("id") or k.get("name"))
-    except Exception:
-        pass
+    except Exception as e:
+        # The docstring promises "a kit can never be missed" because the built-in KITS are
+        # always unioned in. That is only true for kits the CODE knows about; a kit
+        # declared only in deps.json disappears when this read fails, and nothing said so.
+        DEGRADED.append("kit list: registry/deps.json could not be read (%s: %s) - kits "
+                        "declared only there are missing from this run"
+                        % (type(e).__name__, e))
     ids.discard(None)
     return [{"id": k} for k in sorted(ids)]
 
@@ -306,8 +317,11 @@ def quota():
         out["used_minutes"] = d.get("total_minutes_used")
         out["included_minutes"] = d.get("included_minutes") or 2000
         out["source"] = "billing api"
-    except Exception:
-        pass
+    except Exception as e:
+        # Expected (the endpoint is retired and 410s), so not a warning - but the reason
+        # must travel with the number, otherwise an estimate is indistinguishable from a
+        # measurement.
+        out["billing_api_error"] = "%s: %s" % (type(e).__name__, e)
     # 2) estimate this month's private-repo minutes from run durations
     try:
         mstart = datetime.datetime.now(datetime.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -566,8 +580,14 @@ def community(rs=None):
                                  "repo": (i.get("repository_url") or "").rsplit("/", 1)[-1],
                                  "url": i.get("html_url"),
                                  "who": (i.get("user") or {}).get("login") or ""})
-    except Exception:
-        pass
+    except Exception as e:
+        # A FAILED FETCH IS NOT ZERO. This published `issues: 0, prs: 0` on a search
+        # failure, which reads as "nobody has opened anything" when the truth was "we
+        # could not look" - the same defect the activity feed had.
+        ext["unknown"] = True
+        ext["error"] = "%s: %s" % (type(e).__name__, e)
+        DEGRADED.append("community: the open issues/PRs search failed (%s) - the external "
+                        "counts are UNKNOWN, not zero" % type(e).__name__)
 
     return {"totals": tot, "repos": out, "forks": detail,
             "forked_repos": sum(1 for v in detail.values() if v), "external": ext}
@@ -947,7 +967,7 @@ def publish_dashboard(data):
     data["history"] = hist
     for row in data["repos"]:
         row["spark"] = [h.get("byrepo", {}).get(row["name"], 0) for h in hist]
-    data["degraded"] = degraded
+    data["degraded"] = list(degraded) + [d for d in DEGRADED if d not in degraded]
     # data.json is the index: it names forks.json, community.json, traffic.json,
     # changes.json and feed.xml, so it is written LAST. Writing it first meant a run
     # killed between the writes left an index pointing at files that had not been
