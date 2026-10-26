@@ -53,6 +53,15 @@ jobs:
           if [ -f test-node.js ]; then node test-node.js;
           elif [ -f package.json ]; then npm test --if-present;
           else echo "no test script in this repo - skipping"; fi
+      - name: Run the module's own tests, if it has any
+        # drsoam.py is the module every surface generates from, so it gets tested
+        # like code rather than trusted like a script. Without this step the tests
+        # exist and never run - which is how a function that is defined but never
+        # called gets shipped.
+        run: |
+          if [ -d tests ] && ls tests/test_*.py >/dev/null 2>&1; then
+            python3 -m unittest discover -s tests -v
+          else echo "no python tests in this repo - skipping"; fi
       - name: Internal links must resolve
         uses: lycheeverse/lychee-action@v2
         with:
