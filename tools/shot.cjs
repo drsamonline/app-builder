@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// .cjs on purpose: this file uses require(), and it sits in a directory with no
+// package.json, so Node would otherwise resolve the CALLING app's "type": "module"
+// and refuse to run it. A .cjs extension is CommonJS everywhere.
 /**
  * shot.js — screenshot a deployed demo, and put it in the README.
  *
@@ -7,7 +10,7 @@
  * build than the one you can download) and inserts it into the README between
  * markers, so a re-run replaces the image instead of stacking another one.
  *
- *   node tools/shot.js --url <demo-url> --out docs/shot.png --readme README.md
+ *   node tools/shot.cjs --url <demo-url> --out docs/shot.png --readme README.md
  *
  * It never fails the pipeline for a missing screenshot: a broken picture must not
  * block a release. It says so and exits 0.

@@ -499,7 +499,13 @@ jobs:
         run: |
           set -uo pipefail
           sleep 25   # let Pages publish the deploy we just made
-          node builder/tools/shot.js \
+          # .cjs, NOT .js. This script uses require(), and it lives in a directory with
+          # no package.json of its own - so Node walks up to the CALLING app's
+          # package.json, and every app sets "type": "module". That made Node treat
+          # this CommonJS script as ESM and fail with `require is not defined in ES
+          # module scope`, which is why three apps' build-apps.yml have been red.
+          # A .cjs extension is CommonJS in every package, whatever its type says.
+          node builder/tools/shot.cjs \
             --url "https://${{ github.repository_owner }}.github.io/${{ inputs.app_name }}/play/" \
             --out docs/shot.png --readme README.md
           git config user.name  "forge-bot"
