@@ -629,7 +629,17 @@ def dashboard():
             pushed_today[r["name"]] = 1
 
     autos = automation()
-    bad = [a for a in autos if str(a.get("conclusion", "")).lower() in ("failure", "cancelled", "timed_out")]
+    # CANCELLED IS NOT A FAILURE. The estate has 256 cancelled runs in the inspected window,
+    # most of them from `cancel-in-progress: true` on the build callers - superseded pushes,
+    # which is the INTENDED behaviour. Counting them made `health` permanently "bad", and a
+    # flag that is always bad carries no information: it stops being read. A superseded run
+    # tells you nothing about the machinery; a failure does.
+    def _conc(a):
+        return str(a.get("conclusion", "")).lower()
+
+    bad = [a for a in autos if _conc(a) in ("failure", "timed_out")]
+    cancelled = [a for a in autos if _conc(a) == "cancelled"]
+    unobservable = [a for a in autos if _conc(a).startswith(("not visible", "not readable", "no runs yet"))]
     plan = plan_block(rs)
 
     cards = [
@@ -646,7 +656,20 @@ def dashboard():
         "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
                      % (total, len(kits), avg),
+        # `health` stays a string so the console keeps working; the counts ride alongside it
+        # so a reader can see WHY. "9 of 11 green, 3 unobservable" is true and useful;
+        # a bare "bad" is neither.
         "health": "bad" if bad else "ok",
+        "health_detail": {
+            "state": "bad" if bad else "ok",
+            "failing": len(bad),
+            "cancelled": len(cancelled),
+            "unobservable": len(unobservable),
+            "total": len(autos),
+            "note": ("cancelled runs are excluded: a superseded push is intended behaviour, "
+                     "not a fault. unobservable means the console could not read the history - "
+                     "which is NOT the same as 'never ran'."),
+        },
         "cards": cards,
         "summary": {"products": total, "kits": len(kits), "avg": avg,
                     "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
@@ -857,7 +880,12 @@ def automation():
         rec["url"] = "%s/actions/workflows/%s" % (rec["repo_url"], a["file"])
         rec["last_run"] = None
         rec["conclusion"] = "no runs yet"
-        if a["repo"] in ("registry", "forge", "knowledge"):
+        # WAS A HARD-CODED LIST of three repositories, on the assumption that the token could
+        # only read public ones. That assumption is now measurable - drsoam publishes SCOPE -
+        # so this asks instead of assuming, and starts working the moment a cross-repository
+        # token is present. A hard-coded list of "things I cannot see" goes stale the day the
+        # blindness is cured, and silently.
+        if a["repo"] in ("registry", "forge", "knowledge") and SCOPE != "all":
             # NOT "never ran". The workflow runs; the console simply cannot see it,
             # because its token reads public repos only. Saying "never" is a lie of
             # omission - the owner read it as a broken schedule.
