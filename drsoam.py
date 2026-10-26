@@ -14,7 +14,7 @@ diverged (Matneo was excluded in one and not another).
 
 Dependency-free. Set GH_TOKEN to raise the API rate limit.
 
-MIT License. (c) 2026 Dr Sohil Momin.
+PolyForm Noncommercial License 1.0.0. (c) 2026 Dr Sohil Momin.
 """
 import base64, json, os, re, sys, urllib.request, urllib.parse, datetime
 from collections import Counter
