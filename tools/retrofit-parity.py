@@ -91,10 +91,14 @@ def surface(html: str) -> dict:
     # single-file promise is a separate question this tool does not police.
     available = {g: inlined[g] or any(KIT_MARKERS[g] in s for s in srcs) for g in KIT_GLOBALS}
 
-    # a call is "bare" when the global is used, never guarded, and the kit is absent
-    bare = {}
+    # how many times each global is actually CALLED, and which of those calls are
+    # unguarded with no kit present. `used` matters for removals: taking away a kit
+    # nothing references is a cleanup, not a lost capability.
+    used, bare = {}, {}
     for g in KIT_GLOBALS:
         calls = len(re.findall(r'(?<![\w$.])' + g + r'\s*\.\s*\w+\s*\(', html))
+        if calls:
+            used[g] = calls
         if calls and not guarded.get(g) and not available[g]:
             bare[g] = calls
 
@@ -106,11 +110,12 @@ def surface(html: str) -> dict:
         "script_src": srcs,
         "inlined": inlined,
         "available": available,
+        "used": used,
         "bare": bare,
     }
 
 
-def compare(before: dict, after: dict, allow_data_change: bool = False):
+def compare(before: dict, after: dict, allow_data_change: bool = False, after_html: str = ""):
     """Return (reasons this must not merge, warnings). Empty first list = clean."""
     bad: list[str] = []
     warn: list[str] = []
@@ -148,18 +153,32 @@ def compare(before: dict, after: dict, allow_data_change: bool = False):
     #    - the code calls a kit that is not there at all
     for g in KIT_GLOBALS:
         was, now = before["available"].get(g, False), after["available"].get(g, False)
-        if was and not now:
+        still_used = after["used"].get(g, 0)
+        if was and not now and still_used:
             bad.append(f"STANDALONE: {g} was available to the page before and is gone "
-                       "after — the kit is no longer loaded or inlined.")
+                       f"after, but the app still calls it {still_used} time(s). "
+                       "The kit is no longer loaded or inlined and the call cannot work.")
+        elif was and not now:
+            warn.append(f"STANDALONE: {g} was removed from the page and nothing "
+                        "references it — a cleanup, not a lost capability.")
         if after["bare"].get(g):
             bad.append(f"STANDALONE: {after['bare'][g]} `{g}.` call(s) with no guard "
                        f"and no {g} in the page or its scripts — that call cannot work.")
 
-    # 4. the public surface
+    # 4. the public surface. A name that vanished is only a BREAK if something still
+    # refers to it; a name that vanished and is referenced nowhere is dead code being
+    # cleaned up. Without that distinction, deleting an unused inlined kit reported
+    # every one of the kit's own internal functions as a removed capability.
     for f in sorted(before["functions"] - after["functions"]):
-        bad.append(f"API: function `{f}()` was removed.")
+        if re.search(r'(?<![\w$.])' + re.escape(f) + r'\s*\(', after_html):
+            bad.append(f"API: function `{f}()` was removed but is still called.")
+        else:
+            warn.append(f"API: function `{f}()` was removed and nothing calls it - cleanup.")
     for i in sorted(before["ids"] - after["ids"]):
-        bad.append(f"API: element id `{i}` was removed.")
+        if re.search(r'(getElementById\(\s*["\']' + re.escape(i) + r'["\']|#' + re.escape(i) + r'(?![\w-])|["\']' + re.escape(i) + r'["\'])', after_html):
+            bad.append(f"API: element id `{i}` was removed but is still referenced.")
+        else:
+            warn.append(f"API: element id `{i}` was removed and nothing references it - cleanup.")
 
     return bad, warn
 
@@ -195,7 +214,7 @@ def main() -> int:
         ap.error("give BEFORE AFTER, or --git REPO")
 
     before, after = surface(b), surface(a)
-    bad, warn = compare(before, after, args.allow_data_change)
+    bad, warn = compare(before, after, args.allow_data_change, a)
 
     added = (sorted(after["functions"] - before["functions"])
              + ["id:" + i for i in sorted(after["ids"] - before["ids"])])
