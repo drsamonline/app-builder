@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - name: Workflow files are valid YAML
         run: |
           python3 -m pip install --quiet pyyaml
@@ -69,12 +69,12 @@ jobs:
             python3 -m unittest discover -s tests -v
           else echo "no python tests in this repo - skipping"; fi
       - name: Internal links must resolve
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8   # was @v2
         with:
           args: --no-progress --offline --include-fragments "./**/*.html"
           fail: true
       - name: External links (report only)
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8   # was @v2
         continue-on-error: true
         with:
           args: --no-progress --accept 200,429 "./**/*.md"
