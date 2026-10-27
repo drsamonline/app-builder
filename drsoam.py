@@ -195,6 +195,54 @@ def kit_list():
     return [{"id": k} for k in sorted(ids)]
 
 
+_ROLES = None
+
+
+def roles_by_repo():
+    """repo name -> role, from registry/repos.json (the owner's definition).
+
+    F-18: a kit is a kit by ROLE, not by name. This read can fail - the registry is
+    private - and when it does the failure is recorded in DEGRADED and {} is
+    returned, so the caller falls back to the old name rule AND SAYS SO. A silent
+    fallback would publish the old definition under the new label, which is the
+    exact defect this function exists to fix.
+    """
+    global _ROLES
+    if _ROLES is None:
+        try:
+            d = _get("https://api.github.com/repos/%s/registry/contents/repos.json" % OWNER)
+            raw = base64.b64decode((d.get("content") or "").replace("\n", "")).decode("utf-8")
+            data = json.loads(raw)
+            rows = data.get("repos") if isinstance(data, dict) else data
+            _ROLES = {(r.get("name") or r.get("repo")): (r.get("role") or "")
+                      for r in (rows or []) if isinstance(r, dict)}
+            _ROLES.pop(None, None)
+        except Exception as e:
+            DEGRADED.append("kit roles: registry/repos.json could not be read (%s: %s) - the kit "
+                            "count falls back to the NAME rule, which answers a different question"
+                            % (type(e).__name__, e))
+            _ROLES = {}
+    return _ROLES
+
+
+def kit_names(rs, roles=None):
+    """The kits, and which definition produced them.
+
+    Returns (names, definition) where definition is "role" or "name". Both numbers
+    are real and they are not the same question: on 2026-10-27 the role rule gave
+    13 and the name rule gave 18, and two dashboards publishing one each were both
+    right. The caller publishes both, labelled.
+    """
+    roles = roles_by_repo() if roles is None else roles
+    by_name = sorted(r["name"] for r in rs
+                     if r["name"].endswith("-kit") and r["name"] not in META)
+    if roles:
+        by_role = sorted(n for n, role in roles.items() if role == "kit" and n not in META)
+        if by_role:
+            return by_role, "role"
+    return by_name, "name"
+
+
 def category(n):
     if n in HOMEOPATHY: return "Homeopathy"
     if n in HEALTH: return "Health Tools"
@@ -242,7 +290,7 @@ def roadmap(rs=None):
     cannot read — so this shows what IS observable and says so, rather than guessing.
     """
     rs = rs or repos()
-    kits = sorted(r["name"] for r in rs if r["name"].endswith("-kit"))
+    kits, _ = kit_names(rs)
     prods = [r for r in rs if r["name"] not in META]
     return [
         {"what": "Kits built — %d: %s" % (len(kits), ", ".join(kits)),
@@ -596,9 +644,13 @@ def community(rs=None):
 def dashboard():
     rs = repos()
     prods = products(rs)
-    # the kit count comes from the repo list itself (a name ending in -kit), so it
-    # is always right even when the private registry can't be read
-    kits = [r["name"] for r in rs if r["name"].endswith("-kit") and r["name"] not in META] or [k["id"] for k in kit_list()]
+    # F-18: a kit is a kit by ROLE, not by name - the owner's definition, decided
+    # 2026-10-27. The old name rule is still published beside it as
+    # `kits_name_matched`, labelled, because the two numbers are both true and
+    # answer different questions (13 vs 18 on the day this was written).
+    kits, kits_definition = kit_names(rs)
+    kits_name_matched = sorted(r["name"] for r in rs
+                               if r["name"].endswith("-kit") and r["name"] not in META)
     rows, conf, cats = [], {}, {}
     for r in prods:
         s = score(r)
@@ -654,8 +706,8 @@ def dashboard():
     return {
         "generated": today.isoformat(),
         "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "reckoning": "%d products · %d kits · avg conformance %s/5 · updated automatically."
-                     % (total, len(kits), avg),
+        "reckoning": "%d products \u00b7 %d kits (%s) \u00b7 avg metadata completeness %s/5 \u00b7 updated automatically."
+                     % (total, len(kits), kits_definition, avg),
         # `health` stays a string so the console keeps working; the counts ride alongside it
         # so a reader can see WHY. "9 of 11 green, 3 unobservable" is true and useful;
         # a bare "bad" is neither.
@@ -671,7 +723,9 @@ def dashboard():
                      "which is NOT the same as 'never ran'."),
         },
         "cards": cards,
-        "summary": {"products": total, "kits": len(kits), "avg": avg,
+        "summary": {"products": total, "kits": len(kits),
+                    "kits_name_matched": len(kits_name_matched),
+                    "kits_definition": kits_definition, "avg": avg,
                     "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
         "stats": {"conformance": conf, "categories": cats},
         "activity": activity,
