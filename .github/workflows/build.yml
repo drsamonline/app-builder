@@ -291,7 +291,12 @@ jobs:
     # Additions never fail it. A retrofit that only adds is always allowed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name == 'pull_request'
+    # F-65: this ran on pull_request ONLY. Measured across build-apps, ci, test and
+    # deploy-demo: 87 pull_request runs against 1,047 push runs - so the guard fired on
+    # 8% of the changes that could remove a capability, and the incident that created it
+    # (read-live-transform-app) reached the app through a push. A push is compared
+    # against the commit before it, not against a branch ref.
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
         with:
@@ -302,8 +307,19 @@ jobs:
           # one source of truth: fetch the tool from the kit, do not carry a copy
           curl -fsSL -o /tmp/parity.py \
             "https://raw.githubusercontent.com/${{ inputs.kit_repo }}/main/tools/retrofit-parity.py"
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          BASE="origin/${{ github.base_ref }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+            case "$BASE" in
+              0000000000000000000000000000000000000000|"")
+                echo "parity: first push on this ref - there is no previous commit to compare"
+                exit 0 ;;
+            esac
+            # fetch-depth 0 normally has it already; ask only when the object is missing
+            git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags origin "$BASE"
+          fi
           fail=0
           seen=" "
           for f in "${{ inputs.app_src }}/index.html" "index.html"; do
