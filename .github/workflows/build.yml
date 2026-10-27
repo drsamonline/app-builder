@@ -113,6 +113,8 @@ jobs:
           # pipeline (SC2012), and a build directory is exactly where such a name appears
           exe=""
           for f in builder/exe/dist/*portable*.exe; do [ -e "$f" ] && exe="$f" && break; done
+          # F-34: the `|| true` on the ls is correct - it is a diagnostic printed on the way to exit 1,
+          # and the directory may not exist at all. The failure is signalled by exit 1, not by the ls.
           if [ -z "$exe" ]; then echo "no portable exe was produced"; ls -la builder/exe/dist || true; exit 1; fi
           mkdir -p out && cp "$exe" "out/${{ inputs.app_name }}-portable.exe"
           ls -la out
@@ -144,7 +146,8 @@ jobs:
       - run: |
           SDKMANAGER="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 \
+            || echo "::notice::the Android licence prompt was not accepted - it may already be accepted"
           "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
       - run: |
           rm -rf builder/apk/app/src/main/assets/www && mkdir -p builder/apk/app/src/main/assets/www
@@ -190,6 +193,7 @@ jobs:
           # a glob loop, not `ls | head -1` (SC2012)
           bin=""
           for f in builder/exe/dist/*portable*; do [ -e "$f" ] && bin="$f" && break; done
+          # F-34: same as the exe case - a diagnostic, not a swallowed failure.
           if [ -z "$bin" ]; then echo "no linux binary was produced"; ls -la builder/exe/dist || true; exit 1; fi
           mkdir -p out && cp "$bin" "out/${{ inputs.app_name }}-linux"
           chmod +x "out/${{ inputs.app_name }}-linux"
@@ -204,18 +208,21 @@ jobs:
           pid=$!
           url=""
           for _ in $(seq 1 25); do
+            # F-34: grep exits 1 while the server has not printed a URL yet - that is the wait condition,
+            # handled by the [ -n "$url" ] test on the next line. Not a swallowed failure.
             url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' /tmp/run.log | head -1 || true)"
             [ -n "$url" ] && break
             sleep 1
           done
           if [ -z "$url" ]; then
             echo "::error::the Linux binary never printed a URL in 25s"
-            echo "--- what it printed (or did not) ---"; cat /tmp/run.log || true
+            echo "--- what it printed (or did not) ---"; cat /tmp/run.log || echo "(no log at all)"
             echo "--- is it running? ---"; ps -p $pid >/dev/null 2>&1 && echo "yes, pid $pid alive" || echo "no, it exited"
-            kill $pid 2>/dev/null || true; exit 1
+            kill $pid 2>/dev/null || echo "::notice::the process had already exited" ; exit 1
           fi
           code="$(curl -s -o /tmp/page.html -w '%{http_code}' "$url/" || echo 000)"
-          kill $pid 2>/dev/null || true
+          kill $pid 2>/dev/null \
+            || echo "::warning::the app exited on its own before it was killed - it may not stay up"
           echo "served $url -> $code"
           if [ "$code" != "200" ]; then echo "::error::the binary did not serve the app"; cat /tmp/run.log; exit 1; fi
           grep -qi "<html" /tmp/page.html || { echo "::error::the served page is not HTML"; exit 1; }
@@ -262,7 +269,7 @@ jobs:
           pushed=0
           for attempt in 1 2 3 4; do
             git fetch origin "$BR" --quiet
-            git rebase "origin/$BR" --quiet || { git rebase --abort || true; sleep 4; continue; }
+            git rebase "origin/$BR" --quiet || { git rebase --abort 2>/dev/null || echo "::notice::no rebase was in progress to abort"; sleep 4; continue; }
             if git push --quiet origin "HEAD:$BR"; then pushed=1; break; fi
             echo "::warning::push rejected on attempt $attempt - the branch moved again"
             sleep 4
@@ -566,7 +573,7 @@ jobs:
             pushed=0
             for attempt in 1 2 3 4; do
               git fetch origin "$BR" --quiet
-              git rebase "origin/$BR" --quiet || { git rebase --abort || true; sleep 4; continue; }
+              git rebase "origin/$BR" --quiet || { git rebase --abort 2>/dev/null || echo "::notice::no rebase was in progress to abort"; sleep 4; continue; }
               if git push --quiet origin "HEAD:$BR"; then pushed=1; break; fi
               echo "::warning::push rejected on attempt $attempt - the branch moved again"
               sleep 4
