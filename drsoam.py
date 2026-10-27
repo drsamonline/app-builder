@@ -697,7 +697,7 @@ def dashboard():
     cards = [
         {"title": "Products", "value": str(total), "tone": ""},
         {"title": "Kits", "value": str(len(kits)), "tone": "ok"},
-        {"title": "Avg conformance", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
+        {"title": "Metadata completeness", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
         {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
     ]
     if plan:
@@ -727,7 +727,13 @@ def dashboard():
                     "kits_name_matched": len(kits_name_matched),
                     "kits_definition": kits_definition, "avg": avg,
                     "pushes": sum(a["count"] for a in activity), "byrepo": pushed_today},
-        "stats": {"conformance": conf, "categories": cats},
+        # F-15: this was called "conformance" and read as a quality score. It is five
+        # metadata booleans - description, licence, homepage, Pages, not archived - so a
+        # repository whose build failed on its latest run still scores 5/5. The name now
+        # says what it measures. `conformance` is kept as an alias for one release so the
+        # published page keeps working while it is updated, and both keys carry the same
+        # histogram - they are the same number, not two.
+        "stats": {"metadata_completeness": conf, "conformance": conf, "categories": cats},
         "activity": activity,
         "attention": attention(),
         "controls": controls(),
