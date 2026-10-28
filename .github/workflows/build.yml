@@ -297,11 +297,73 @@ jobs:
             || gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                  --title "$tag" --notes-file .release-notes.md
 
+  kit-guard:
+    name: A kit is never retrofitted into a repository
+    # THE KIT RULE, AS A CHECK. Owner's instruction, 2026-10-28:
+    #
+    #   Kits are one-way. A kit LEARNS from repositories (harvest, app -> kit) and is
+    #   USED to build new apps. A kit is never retrofitted into a repository - not an
+    #   existing one, not a new one. No exception for a retrofit that would be safe,
+    #   additive or capability-preserving.
+    #
+    # The parity job below asks whether a retrofit was DAMAGING - it passes anything that
+    # only adds, which permitted the thing this rule forbids. This asks the only question
+    # that matters now: did a kit appear where there was not one?
+    #
+    # What tells a retrofit from a new app is not the kit, it is the page. A new app
+    # brings its page and its kit in the same change, so the page is NEW. A retrofit puts
+    # a kit into a page that was already shipping without it, so the page is OLD. No
+    # judgement call, and it cannot be argued with.
+    #
+    # It also refuses a kit file added with no page loading it - a kit with no consumer -
+    # and it never refuses a REMOVAL, because taking a kit out is the repair this rule
+    # exists to make possible.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+        with:
+          fetch-depth: 0
+      - name: Refuse a kit added to a page that already existed
+        run: |
+          set -euo pipefail
+          # one source of truth: fetch the tool from the kit, do not carry a copy
+          curl -fsSL -o /tmp/kit-guard.py \
+            "https://raw.githubusercontent.com/${{ inputs.kit_repo }}/main/tools/kit-guard.py"
+          # the guard tests itself both ways before it judges the repository - a detector
+          # that cannot pass a legitimate change gets switched off in a week
+          python3 /tmp/kit-guard.py --self-test
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+            case "$BASE" in
+              0000000000000000000000000000000000000000|"")
+                echo "kit-guard: first push on this ref - there is no previous commit to compare"
+                exit 0 ;;
+            esac
+            git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags origin "$BASE"
+          fi
+          python3 /tmp/kit-guard.py --base "$BASE" --root .
+
   parity:
     name: A retrofit must not remove a capability
-    # THE PARITY GATE, AS A CHECK.
+    # RETAINED, BUT NOT AS PERMISSION TO RETROFIT. Retrofit is now forbidden outright -
+    # see the kit-guard job above and the owner's rule of 2026-10-28. This job's name and
+    # check name are deliberately unchanged, because a required status check is matched on
+    # that name and renaming it would silently un-require it.
     #
-    # HANDOFF rule 1 says the direction is app -> kit, never kit -> app. A direction is
+    # What it still does is worth keeping: it catches a change that REMOVES a capability -
+    # an embedded JSON block that stops parsing, a guarded call that became bare, a
+    # function or element id that disappeared. That is not a kit question and the bug it
+    # was built for (read-live-transform-app's two unescaped quotes, which killed the
+    # whole script) can still happen in any change.
+    #
+    # The original reasoning, kept because it is still why the check exists:
+    #
+    # HANDOFF rule 1 said the direction is app -> kit, never kit -> app. A direction is
     # not a check: nothing compared what the app could DO before against what it could do
     # after, so "the kit is wired in" and "the app is weaker" looked identical. On
     # read-live-transform-app a retrofit wired export-kit in correctly and then deleted

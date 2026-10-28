@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""retrofit-parity — refuse a retrofit that makes the app weaker.
+"""retrofit-parity — refuse a change that makes the app weaker.
+
+RETROFIT IS FORBIDDEN, as of the owner's instruction on 2026-10-28: kits are one-way, they
+learn from repositories and are used to build new apps, and a kit is never retrofitted into
+a repository. `tools/kit-guard.py` enforces that, and it is the guard to read first.
+
+This tool is kept, and is still run by the `parity` job, because it answers a different and
+still-necessary question: did this change REMOVE a capability the app already had? That is
+not a kit question - an embedded JSON block that stops parsing, or a function that
+disappears, breaks an app whether or not a kit is involved. Do not read its presence in the
+pipeline as permission to retrofit anything.
 
 THE PROBLEM THIS SOLVES, in the words of the run that created it:
 
