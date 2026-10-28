@@ -14,7 +14,7 @@ name: All kit tests
 
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 5 * * 3"
   workflow_dispatch: {}
 
 permissions:
