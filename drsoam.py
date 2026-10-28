@@ -802,24 +802,38 @@ def leaderboard(rs=None):
 # --------------------------------------------------------------------------- #
 HUB = "https://drsamonline.github.io/"
 
+# There is no checkout yet. Until there is, every Forge licence button opens a
+# pre-filled enquiry email instead of pointing at HUB: a button that says "Get
+# this product" and lands the visitor on the site's front page reads as broken,
+# and the front page is a project index, not a shop. When a payment link exists,
+# set ENQUIRE to it and nothing else in this file needs to change.
+ENQUIRE = ("mailto:sohilmomin2000@gmail.com"
+           "?subject=Forge%20licence%20enquiry"
+           "&body=Which%20licence%20are%20you%20after%20(personal%2C%20commercial%2C%20"
+           "reseller%2FOEM)%3F%0A%0AWhat%20are%20you%20building%3F%0A")
+PRODUCT_PAGE = HUB + "Matneo/product.html?id=%s"
+
+# sourceRepo is deliberately absent: the Forge repo is private, so a "View source"
+# button built from it 404s for every visitor. The detail page renders that button
+# only when sourceRepo is set, so leaving the key out removes a dead link.
 FOR_SALE = [
     {"id": "forge-personal", "title": "Forge — Personal licence", "category": "Licence",
-     "type": "licence", "price": "Free", "link": HUB, "landingPage": HUB,
-     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "type": "licence", "price": "Free", "link": ENQUIRE, "landingPage": PRODUCT_PAGE % "forge-personal",
+     "image": "", "license": "Proprietary (EULA)",
      "tagline": "Use Forge on your own non-commercial repos.",
      "description": "Run the whole system — the workflows, the kits, the queue, the console — "
                     "on your own non-commercial repositories. Attribution required; no resale.",
      "tags": ["licence", "personal"], "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": True},
     {"id": "forge-commercial", "title": "Forge — Commercial licence", "category": "Licence",
-     "type": "licence", "price": "Paid", "link": HUB, "landingPage": HUB,
-     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "type": "licence", "price": "Paid", "link": ENQUIRE, "landingPage": PRODUCT_PAGE % "forge-commercial",
+     "image": "", "license": "Proprietary (EULA)",
      "tagline": "Use Forge in commercial work, for one entity.",
      "description": "For companies, freelancers and client work: use Forge in commercial projects "
                     "for one entity. Terms and pricing are in TERMS.md.",
      "tags": ["licence", "commercial"], "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": True},
     {"id": "forge-reseller", "title": "Forge — Reseller / OEM licence", "category": "Licence",
-     "type": "licence", "price": "Paid", "link": HUB, "landingPage": HUB,
-     "image": "", "sourceRepo": "%s/forge" % OWNER, "license": "Proprietary (EULA)",
+     "type": "licence", "price": "Paid", "link": ENQUIRE, "landingPage": PRODUCT_PAGE % "forge-reseller",
+     "image": "", "license": "Proprietary (EULA)",
      "tagline": "Bundle Forge into your own product.",
      "description": "Embed Forge in something you ship and resell. A higher tier, with terms and "
                     "pricing in TERMS.md.",
