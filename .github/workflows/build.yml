@@ -96,9 +96,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { path: app-repo }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { repository: "${{ inputs.kit_repo }}", path: builder }
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # was @v5
         with: { python-version: '3.12' }
@@ -135,9 +135,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { path: app-repo }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { repository: "${{ inputs.kit_repo }}", path: builder }
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3   # was @v4
         with: { distribution: temurin, java-version: '17' }
@@ -177,9 +177,9 @@ jobs:
     # --add-data separator from os.name) - it was just never wired in, so Linux
     # users had nothing to download. Same source, same launcher, one more artefact.
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { path: app-repo }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { repository: "${{ inputs.kit_repo }}", path: builder }
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # was @v5
         with: { python-version: '3.12' }
@@ -240,8 +240,8 @@ jobs:
     # changes/, and its commit carries [skip ci] so it cannot re-trigger itself.
     if: github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { repository: "${{ inputs.kit_repo }}", path: .tools }
       - name: Consume the pending change files
         id: cl
@@ -322,7 +322,7 @@ jobs:
     timeout-minutes: 10
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with:
           fetch-depth: 0
       - name: Refuse a kit added to a page that already existed
@@ -388,7 +388,7 @@ jobs:
     # against the commit before it, not against a branch ref.
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with:
           fetch-depth: 0
       - name: Compare the app against its base
@@ -448,7 +448,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
       - name: Compare the demo to the app
         run: |
           set -euo pipefail
@@ -552,7 +552,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
       - name: Fail early if there is nothing to publish
         run: |
           if [ ! -d "${{ inputs.deploy_path }}" ]; then
@@ -593,8 +593,8 @@ jobs:
     needs: [pages]
     if: github.event_name != 'pull_request' && inputs.deploy_path != ''
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # was @v7.0.1
         with: { repository: "${{ inputs.kit_repo }}", path: builder }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # was @v4
         with: { node-version: '20' }
