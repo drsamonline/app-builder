@@ -102,13 +102,22 @@ jobs:
         with: { repository: "${{ inputs.kit_repo }}", path: builder }
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # was @v5
         with: { python-version: '3.12' }
-      - run: python -m pip install --upgrade pip pyinstaller pefile
+      - run: python -m pip install --upgrade pip pyinstaller pefile pillow
+      - name: Generate the app icon
+        shell: bash
+        run: |
+          python builder/tools/make_icons.py \
+            --app "app-repo/${{ inputs.app_src }}" \
+            --name "${{ inputs.app_name }}" \
+            --ico out/icon.ico
       - shell: bash
+        env:
+          ICON_PATH: ${{ github.workspace }}/out/icon.ico
         run: |
           set -e
           rm -rf builder/exe/app && mkdir -p builder/exe/app
           cp -r "app-repo/${{ inputs.app_src }}/." builder/exe/app/
-          APP_NAME="${{ inputs.app_name }}" python builder/exe/build.py
+          APP_NAME="${{ inputs.app_name }}" ICON_PATH="$ICON_PATH" python builder/exe/build.py
           # a glob loop, not `ls | head -1`: a filename with a newline breaks the
           # pipeline (SC2012), and a build directory is exactly where such a name appears
           exe=""
@@ -125,6 +134,9 @@ jobs:
       - name: Verify the EXE we ship
         shell: bash
         run: python builder/tools/verify_exe.py "out/${{ inputs.app_name }}-portable.exe"
+      - name: Verify the EXE carries an icon
+        shell: bash
+        run: python builder/tools/verify_icons.py --exe "out/${{ inputs.app_name }}-portable.exe"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
         with:
           name: portable-exe
@@ -149,6 +161,13 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 \
             || echo "::notice::the Android licence prompt was not accepted - it may already be accepted"
           "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
+      - run: python -m pip install --upgrade pip pillow
+      - name: Generate the launcher icons
+        run: |
+          python builder/tools/make_icons.py \
+            --app "app-repo/${{ inputs.app_src }}" \
+            --name "${{ inputs.app_name }}" \
+            --res builder/apk/app/src/main/res
       - run: |
           rm -rf builder/apk/app/src/main/assets/www && mkdir -p builder/apk/app/src/main/assets/www
           cp -r "app-repo/${{ inputs.app_src }}/." builder/apk/app/src/main/assets/www/
@@ -164,6 +183,8 @@ jobs:
       - run: |
           mkdir -p out
           cp builder/apk/app/build/outputs/apk/release/app-release.apk "out/${{ inputs.app_name }}.apk"
+      - name: Verify the APK carries an icon
+        run: python builder/tools/verify_icons.py --apk "out/${{ inputs.app_name }}.apk"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
         with:
           name: android-apk
