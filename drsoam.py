@@ -870,7 +870,7 @@ def posts():
             "category": "For sale" if p["price"] != "Free" else "Licence",
             "date": datetime.date.today().isoformat(),
             "summary": p.get("description") or p.get("tagline") or "",
-            "url": p.get("link") or HUB,
+            "url": p.get("landingPage") or p.get("link") or HUB,
             "source": p.get("sourceRepo") or "",
             "image": p.get("image") or "",
             "kind": "product",
