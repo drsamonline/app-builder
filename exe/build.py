@@ -44,6 +44,20 @@ def main() -> int:
         "--noconfirm",
         "--clean",
         "--onefile",
+    ]
+
+    # The icon the release ships with. tools/make_icons.py writes it; without one
+    # PyInstaller embeds its own default logo, which reads as an unfinished build
+    # to anyone downloading the exe.
+    icon = os.environ.get("ICON_PATH", "")
+    if icon and os.path.exists(icon):
+        print("[build] icon:", icon, flush=True)
+        cmd += ["--icon", icon]
+    else:
+        print("[build] WARNING: no ICON_PATH - the exe will carry the default icon",
+              flush=True)
+
+    cmd += [
         "--name",
         name,
         "--distpath",
