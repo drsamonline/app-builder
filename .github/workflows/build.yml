@@ -137,7 +137,7 @@ jobs:
       - name: Verify the EXE carries an icon
         shell: bash
         run: python builder/tools/verify_icons.py --exe "out/${{ inputs.app_name }}-portable.exe"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # was @v7.0.2
         with:
           name: portable-exe
           path: out/${{ inputs.app_name }}-portable.exe
@@ -185,7 +185,7 @@ jobs:
           cp builder/apk/app/build/outputs/apk/release/app-release.apk "out/${{ inputs.app_name }}.apk"
       - name: Verify the APK carries an icon
         run: python builder/tools/verify_icons.py --apk "out/${{ inputs.app_name }}.apk"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # was @v7.0.2
         with:
           name: android-apk
           path: out/${{ inputs.app_name }}.apk
@@ -248,7 +248,7 @@ jobs:
           if [ "$code" != "200" ]; then echo "::error::the binary did not serve the app"; cat /tmp/run.log; exit 1; fi
           grep -qi "<html" /tmp/page.html || { echo "::error::the served page is not HTML"; exit 1; }
           echo "the Linux binary serves the app." >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # was @v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # was @v7.0.2
         with:
           name: linux-bin
           path: out/${{ inputs.app_name }}-linux
