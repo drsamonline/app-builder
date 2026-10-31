@@ -68,6 +68,8 @@ FUNCTION = re.compile(r'function\s+([A-Za-z_$][\w$]*)\s*\(')
 ELEMENT_ID = re.compile(r'\bid=["\']([\w-]+)["\']')
 GUARDED = re.compile(r'if\s*\(\s*window\.(\w+)\s*&&')
 SCRIPT_SRC = re.compile(r'<script[^>]*\bsrc=["\']([^"\']+)["\']')
+# tokens a build substitutes before the page is served, e.g. lockhtml's __PAYLOAD__
+PLACEHOLDER = re.compile(r'__[A-Z][A-Z0-9_]{2,}__|\{\{[^}]{1,40}\}\}')
 
 
 def read(path: str) -> str:
@@ -78,6 +80,14 @@ def surface(html: str) -> dict:
     """Everything about the app that a retrofit could quietly take away."""
     json_blocks = []
     for raw in JSON_BLOCK.findall(html):
+        # A build-time placeholder is not JSON until the build substitutes it.
+        # lockhtml ships __PAYLOAD__ inside its data block; treating that as broken
+        # meant EVERY edit to the file failed this guard - including a pure revert
+        # to the last version that built green.
+        ph = PLACEHOLDER.search(raw)
+        if ph:
+            json_blocks.append(("placeholder", ph.group(0)))
+            continue
         try:
             json_blocks.append(("ok", json.loads(raw)))
         except Exception as exc:                                   # noqa: BLE001
