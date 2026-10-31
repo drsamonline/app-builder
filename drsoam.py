@@ -26,6 +26,9 @@ OWNER = "drsamonline"
 META = {
     "drsamonline", "drsamonline.github.io", "app-builder", "skills", "profile-kit",
     "forge", "registry", "knowledge", "dashboard", "Matneo",
+    # the change log: tooling, not a product. Without this it is counted as one
+    # and appears on the hub with a licence badge, which is wrong twice over.
+    "audit",
 }
 KITS = {
     "web-kit", "optical-kit", "crypto-kit", "compress-kit", "lan-kit", "game-kit",
