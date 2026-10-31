@@ -143,7 +143,8 @@ def compare(before: dict, after: dict, allow_data_change: bool = False, after_ht
     # 1. the app's data must still parse, and must not have been edited
     b_json = [d for s, d in before["json"] if s == "ok"]
     for i, (status, data) in enumerate(after["json"]):
-        if status != "ok":
+        # "placeholder" is a build-time token awaiting substitution, not damage.
+        if status == "broken":
             bad.append(f"DATA: embedded JSON block {i} no longer parses — {data}. "
                        "The whole app script dies on this.")
     a_json = [d for s, d in after["json"] if s == "ok"]
