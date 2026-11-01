@@ -64,15 +64,15 @@ on:
         required: false
         type: string
         default: app-latest
-      release_notes:
-        description: "Path (in the app repo) to a markdown file to use as the rolling release's notes. {{sha}} and {{tag}} are substituted. Empty = the built-in one-liner."
-        required: false
-        type: string
-        default: ""
       kit_repo:
         required: false
         type: string
         default: drsamonline/app-builder
+      adaptive_icon:
+        description: "Write Android adaptive-icon resources (mipmap-anydpi-v26 + foreground/background layers). Opt-in: it writes into the APK's resource tree."
+        required: false
+        type: boolean
+        default: false
 
 # These MUST be granted here as well as by the caller. A reusable workflow cannot
 # raise its own permissions above the caller's, but its top-level `permissions`
@@ -186,6 +186,17 @@ jobs:
           python builder/tools/make_icons.py \
             --app "app-repo/${{ inputs.app_src }}" \
             --name "${{ inputs.app_name }}" \
+            --res builder/apk/app/src/main/res
+      - name: Adaptive icon
+        # OPT-IN. Android 8+ masks a launcher icon to the device's shape; an
+        # adaptive icon supplies a background that fills it and a foreground that
+        # survives the crop. It writes into the APK's resource tree, so an app
+        # whose project already defines these resources would get a duplicate
+        # resource error - which is exactly why it is not on by default.
+        if: ${{ inputs.adaptive_icon }}
+        run: |
+          python builder/tools/make_adaptive_icon.py \
+            --app "app-repo/${{ inputs.app_src }}" \
             --res builder/apk/app/src/main/res
       - run: |
           rm -rf builder/apk/app/src/main/assets/www && mkdir -p builder/apk/app/src/main/assets/www
@@ -558,22 +569,10 @@ jobs:
         with: { name: android-apk, path: dist }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093   # was @v4
         with: { name: linux-bin, path: dist }
-      # The notes file, if the app supplies one, lives in the app repo - so the
-      # release job needs a checkout. Sparse: it only ever reads one file, and
-      # nothing here builds from it.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
-        if: inputs.release_notes != ''
-        with:
-          path: app-repo
-          sparse-checkout: |
-            ${{ inputs.release_notes }}
-          sparse-checkout-cone-mode: false
       - env:
           GH_TOKEN: "${{ github.token }}"
           APP_NAME: "${{ inputs.app_name }}"
           SHA: "${{ github.sha }}"
-          TAG: "${{ inputs.release_tag }}"
-          NOTES_FILE: "${{ inputs.release_notes }}"
         run: |
           set -euo pipefail
           # NEVER delete the release first. Create it only if it is missing, then
@@ -595,21 +594,8 @@ jobs:
             echo "::error::no artifacts at all to publish for ${APP_NAME}"; exit 1
           fi
           gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
-          # The notes are the app's own, when it supplies them - an icon per asset,
-          # a checksum table, whatever it wants. {{sha}} and {{tag}} are filled in
-          # here so the release still says which commit it came from, and a missing
-          # file falls back to the built-in line rather than failing the release.
-          notes=()
-          if [ -n "${NOTES_FILE}" ] && [ -f "app-repo/${NOTES_FILE}" ]; then
-            sed -e "s/{{sha}}/${SHA}/g" -e "s/{{tag}}/${TAG}/g" "app-repo/${NOTES_FILE}" > /tmp/release-notes.md
-            if [ -s /tmp/release-notes.md ]; then
-              notes=(--notes-file /tmp/release-notes.md)
-            fi
-          fi
-          if [ ${#notes[@]} -eq 0 ]; then
-            notes=(--notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe (Windows), ${APP_NAME}.apk (Android), ${APP_NAME}-linux (Linux).")
-          fi
-          gh release edit "${TAG}" --repo "$GITHUB_REPOSITORY" "${notes[@]}"
+          gh release edit "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
+            --notes "Automated build from ${SHA}. Assets: ${APP_NAME}-portable.exe (Windows), ${APP_NAME}.apk (Android), ${APP_NAME}-linux (Linux)."
           echo "### Released ${APP_NAME} from ${SHA}" >> "$GITHUB_STEP_SUMMARY"
 
   pages:
