@@ -49,10 +49,15 @@ except ImportError:                                    # pragma: no cover
 
 DENSITIES = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 ICON_NAMES = ("icon.png", "icon.jpg", "docs/icon.png", "assets/icon.png")
+# In the app directory first, then beside it: an app that keeps its artwork in
+# docs/assets should not have to copy two PNGs into the directory it ships, where
+# they would ride along into the APK's www assets for no reason.
 FG_NAMES = ("icon-adaptive-foreground.png", "docs/icon-adaptive-foreground.png",
-            "assets/icon-adaptive-foreground.png")
+            "assets/icon-adaptive-foreground.png", "../assets/icon-adaptive-foreground.png",
+            "../icon-adaptive-foreground.png")
 BG_NAMES = ("icon-adaptive-background.png", "docs/icon-adaptive-background.png",
-            "assets/icon-adaptive-background.png")
+            "assets/icon-adaptive-background.png", "../assets/icon-adaptive-background.png",
+            "../icon-adaptive-background.png")
 
 ADAPTIVE_XML = """<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
