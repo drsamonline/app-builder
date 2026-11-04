@@ -14,6 +14,7 @@ MIT. (c) 2026 Dr Sohil Momin.
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -37,14 +38,44 @@ def snapshot(changes):
     }
 
 
+MANIFEST_TOOL = os.path.join(ROOT, "tools", "manifest.py")
+
+
+def git(*args):
+    return subprocess.run(["git", "-c", "user.email=t@example.invalid",
+                           "-c", "user.name=test", *args],
+                          capture_output=True, text=True, check=True)
+
+
 class InTmp(unittest.TestCase):
     def setUp(self):
         self._old = os.getcwd()
         self.tmp = tempfile.mkdtemp()
         os.chdir(self.tmp)
+        # publish_dashboard() gates every write on the provenance manifest, and
+        # manifest.py needs a git working tree (it compares the manifest sha to the
+        # committed sha to the worktree sha). Every published artifact lives in one,
+        # so the test does too. A bare tmpdir made the gate refuse the whole batch
+        # ("not a git checkout", exit 1) and these four tests failed against code
+        # that was right - see the failure of run 41863113038.
+        git("init", "-q", ".")
 
     def tearDown(self):
         os.chdir(self._old)
+
+    def previous_run(self, *paths):
+        """Make `paths` look like LAST run's output: committed, and recorded in the
+        manifest by the generator that wrote them.
+
+        A file that exists but is not in the manifest is `unrecorded` (exit 3) and
+        the gate refuses it - correctly, because the tool cannot tell a previous
+        run's output from a human's edit. Recording is what the previous run did.
+        """
+        git("add", "-A")
+        git("commit", "-qm", "previous run")
+        subprocess.run([sys.executable, MANIFEST_TOOL, "record", *paths,
+                        "--producer", "drsoam@test", "--class", "generated"],
+                       capture_output=True, text=True, check=True)
 
 
 class TestFetchFailureIsNotEmptiness(unittest.TestCase):
@@ -102,6 +133,7 @@ class TestPublishNeverDeletesTheLiveFeed(InTmp):
             json.dump(good_changes, f)
         with open("feed.xml", "w", encoding="utf-8") as f:
             f.write(good_feed)
+        self.previous_run("changes.json", "feed.xml")
 
         degraded = drsoam.publish_dashboard(snapshot(None))
 
@@ -133,6 +165,29 @@ class TestPublishNeverDeletesTheLiveFeed(InTmp):
         degraded = drsoam.publish_dashboard(snapshot([]))
         self.assertEqual(degraded, [], "an empty list is a fact, not a failure")
         self.assertTrue(os.path.exists("feed.xml"))
+
+    def test_a_hand_edited_artifact_refuses_the_whole_batch(self):
+        """The gate the commit 97cd6e6 shipped, proved: a file a human changed since
+        the last recorded run stops the WHOLE publish, not just that one file -
+        data.json carries data[\"history\"], so a skipped history.json written
+        alongside a fresh data.json would still be a lie."""
+        with open("history.json", "w", encoding="utf-8") as f:
+            json.dump({"snapshots": []}, f)
+        self.previous_run("history.json")
+        with open("history.json", "w", encoding="utf-8") as f:
+            json.dump({"snapshots": [], "edited_by": "a human"}, f)
+
+        degraded = drsoam.publish_dashboard(snapshot([]))
+
+        self.assertTrue(any(d.startswith("manifest:") for d in degraded),
+                        "a refused write must say why: %r" % (degraded,))
+        self.assertFalse(os.path.exists("data.json"),
+                         "data.json was written although the batch was refused")
+        self.assertFalse(os.path.exists("feed.xml"),
+                         "feed.xml was written although the batch was refused")
+        with open("history.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["edited_by"], "a human",
+                             "the hand-edited file was overwritten")
 
 
 if __name__ == "__main__":
