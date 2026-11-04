@@ -1101,6 +1101,16 @@ def write(path, obj, gated=False):
     never a fragment.
     """
     if not gated and not _manifest_check([path]):
+        # A refusal that returns False in silence is the defect this estate keeps
+        # meeting: on 2026-11-04 `drsoam.py store` in Matneo SKIPPED the live
+        # docs/data/products.json ("unrecorded") and printed DEGRADED=[], so the
+        # store would have refreshed its source copy and nothing the site reads,
+        # and the run would have reported success. Say it, and let main() turn it
+        # into the exit code it already uses for a degraded run.
+        reason = "%s: the manifest gate refused the write - the file was NOT written" % path
+        if reason not in DEGRADED:
+            DEGRADED.append(reason)
+        print("::warning::" + reason, file=sys.stderr)
         return False
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"

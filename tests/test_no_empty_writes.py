@@ -59,9 +59,15 @@ class InTmp(unittest.TestCase):
         # ("not a git checkout", exit 1) and these four tests failed against code
         # that was right - see the failure of run 41863113038.
         git("init", "-q", ".")
+        # DEGRADED is module-level and each run starts empty, so each test does too.
+        del drsoam.DEGRADED[:]
 
     def tearDown(self):
         os.chdir(self._old)
+
+    def commit(self, message="previous run"):
+        git("add", "-A")
+        git("commit", "-qm", message)
 
     def previous_run(self, *paths):
         """Make `paths` look like LAST run's output: committed, and recorded in the
@@ -71,8 +77,9 @@ class InTmp(unittest.TestCase):
         the gate refuses it - correctly, because the tool cannot tell a previous
         run's output from a human's edit. Recording is what the previous run did.
         """
-        git("add", "-A")
-        git("commit", "-qm", "previous run")
+        self.commit()
+        if not paths:
+            return
         subprocess.run([sys.executable, MANIFEST_TOOL, "record", *paths,
                         "--producer", "drsoam@test", "--class", "generated"],
                        capture_output=True, text=True, check=True)
@@ -188,6 +195,27 @@ class TestPublishNeverDeletesTheLiveFeed(InTmp):
         with open("history.json", encoding="utf-8") as f:
             self.assertEqual(json.load(f)["edited_by"], "a human",
                              "the hand-edited file was overwritten")
+
+
+class TestARefusedWriteIsNeverSilent(InTmp):
+    """2026-11-04: `drsoam.py store` in Matneo SKIPPED the live
+    docs/data/products.json ("unrecorded") and printed DEGRADED=[] - so the store
+    would have refreshed the copy nobody reads and the run would have reported
+    success. A gate that refuses is only half a gate; it has to say so."""
+
+    def test_a_refused_write_lands_in_degraded_and_leaves_the_file_alone(self):
+        with open("protected.json", "w", encoding="utf-8") as f:
+            f.write('{"edited_by": "a human"}')
+        self.commit()                            # committed, but never recorded
+
+        del drsoam.DEGRADED[:]
+        wrote = drsoam.write("protected.json", {"over": "written"})
+
+        self.assertFalse(wrote, "an unrecorded file must not be overwritten")
+        self.assertTrue(any("protected.json" in d and "refused" in d for d in drsoam.DEGRADED),
+                        "the refusal must be reported: %r" % (drsoam.DEGRADED,))
+        with open("protected.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["edited_by"], "a human")
 
 
 if __name__ == "__main__":
