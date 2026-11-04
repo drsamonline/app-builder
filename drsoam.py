@@ -16,7 +16,8 @@ Dependency-free. Set GH_TOKEN to raise the API rate limit.
 
 MIT License. (c) 2026 Dr Sohil Momin.
 """
-import base64, json, os, re, sys, urllib.request, urllib.parse, datetime
+import base64, json, os, re, subprocess, sys, urllib.request, urllib.parse, datetime
+from pathlib import Path
 from collections import Counter
 
 OWNER = "drsamonline"
@@ -1004,7 +1005,93 @@ def rss(items):
     return "\n".join(out) + "\n"
 
 
-def write(path, obj):
+# ---- manifest gate: refuse to overwrite a file a human changed ---------------
+def _find_manifest_tool() -> Path:
+    """Known locations, in order. Raise if neither exists — never silently skip.
+
+    A missing tool is a deployment error and must be a red run, not a quiet no-op:
+    silently returning False here would stop every generator in the estate from
+    writing anything, and would look like a broken product rather than a broken
+    deployment.
+    """
+    here = Path(__file__).resolve().parent
+    candidates = [here / "manifest.py", here / "tools" / "manifest.py"]
+    for c in candidates:
+        if c.exists():
+            return c
+    raise SystemExit(
+        "manifest.py not found. Expected one of: "
+        + ", ".join(str(c) for c in candidates)
+        + ". This is a deployment error — the tool must be present beside the generator.")
+
+
+def _manifest_check(paths: list) -> bool:
+    """True = safe to write every path. False = refuse the whole batch.
+
+    Exit 0 (clean, new) -> safe. 3 (drift) -> refuse. 4 (protected, locked) ->
+    refuse. Anything else -> refuse, treating it as broken. A gate that fails open
+    on the one case it exists for is not a gate.
+    """
+    tool = _find_manifest_tool()
+    try:
+        r = subprocess.run([sys.executable, str(tool), "check", *paths],
+                           capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        print(f"::warning::manifest check crashed ({e}) — refusing write", file=sys.stderr)
+        return False
+    if r.returncode not in (0, 3, 4):
+        print(f"::warning::manifest check exited {r.returncode} — refusing write",
+              file=sys.stderr)
+        return False
+    if r.returncode == 0:
+        return True
+    repo_locked_seen = False
+    for line in r.stdout.splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if e.get("status") in {"clean", "new"}:
+            continue
+        if e.get("scope") == "repo":
+            if not repo_locked_seen:
+                print("::warning::skip all: repository is locked (repo-level)", file=sys.stderr)
+                repo_locked_seen = True
+        else:
+            print(f"::warning::skip {e['path']}: {e['status']} "
+                  f"(class={e.get('class')}, "
+                  f"manifest={str(e.get('manifest_sha'))[:12]}, "
+                  f"committed={str(e.get('committed_sha'))[:12]}, "
+                  f"worktree={str(e.get('worktree_sha'))[:12]})", file=sys.stderr)
+    return False
+
+
+def _manifest_record(paths, producer, cls="generated"):
+    """Record AFTER the write lands. A record failure is a warning, not a rollback."""
+    try:
+        tool = _find_manifest_tool()
+    except SystemExit:
+        return
+    try:
+        subprocess.run([sys.executable, str(tool), "record", *paths,
+                        "--producer", producer, "--class", cls],
+                       capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        print(f"::warning::manifest record failed ({e}) — next run will see drift",
+              file=sys.stderr)
+
+
+def _producer(tool: str) -> str:
+    try:
+        sha = subprocess.run(["git", "hash-object", "--", __file__],
+                             capture_output=True, text=True, check=True).stdout.strip()[:7]
+    except Exception:
+        sha = "unknown"
+    return f"{tool}@{sha}"
+# ---- end manifest gate ------------------------------------------------------
+
+
+def write(path, obj, gated=False):
     """Write a published artifact atomically.
 
     `open(path, "w")` truncates first and writes second, so a run killed in between
@@ -1013,6 +1100,8 @@ def write(path, obj):
     which is atomic on the same filesystem: a reader sees the old file or the new one,
     never a fragment.
     """
+    if not gated and not _manifest_check([path]):
+        return False
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
     try:
@@ -1031,7 +1120,10 @@ def write(path, obj):
         except OSError:
             pass
         raise
+    # OUTSIDE the try: a record failure must not undo a successful write.
+    _manifest_record([path], _producer("drsoam"), cls="generated")
     print("wrote", path)
+    return True
 
 
 def _read_json(path):
@@ -1063,6 +1155,20 @@ def publish_dashboard(data):
         else:
             degraded.append("activity feed: the fetch failed and there is no published feed to keep")
 
+    # ONE check for every path this run will write, taken BEFORE the first write.
+    # history.json is written by update_history() below, outside the artifact, so
+    # checking only the artifact would let a protected history.json be skipped while
+    # data.json - which carries data["history"] - was still written. All-or-nothing
+    # has to mean every file the run touches, not just the index's siblings.
+    will_write = ["history.json", "forks.json", "community.json", "traffic.json",
+                  "data.json"]
+    if fetched:
+        will_write += ["changes.json", "feed.xml"]
+    if not _manifest_check(will_write):
+        degraded.append("manifest: the dashboard artifact needs a human decision - "
+                        "nothing was written this run")
+        return degraded
+
     snap = {"date": data["generated"], "products": data["summary"]["products"],
             "kits": data["summary"]["kits"], "avg": data["summary"]["avg"],
             "pushes": data["summary"]["pushes"], "byrepo": data["summary"]["byrepo"],
@@ -1077,15 +1183,18 @@ def publish_dashboard(data):
     # changes.json and feed.xml, so it is written LAST. Writing it first meant a run
     # killed between the writes left an index pointing at files that had not been
     # updated - the page would render last run's numbers under this run's date.
-    write("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]})
-    write("community.json", {"generated": data["generated"], **data["community"]})
-    write("traffic.json", {"generated": data["generated"], **data["traffic"]})
+    artifact = [
+        ("forks.json", {"generated": data["generated"], "forks": data["community"]["forks"]}),
+        ("community.json", {"generated": data["generated"], **data["community"]}),
+        ("traffic.json", {"generated": data["generated"], **data["traffic"]}),
+    ]
     if fetched:
-        # only a feed we actually looked at may be rewritten; a reused one stays
-        # byte-for-byte as published
-        write("changes.json", {"generated": data["generated"], "changes": data["changes"]})
-        write("feed.xml", rss(data["changes"]))
-    write("data.json", data)
+        artifact.append(("changes.json", {"generated": data["generated"], "changes": data["changes"]}))
+        artifact.append(("feed.xml", rss(data["changes"])))
+    artifact.append(("data.json", data))          # the index, always last
+    # already checked at the top of this function, before any write
+    for _p, _o in artifact:
+        write(_p, _o, gated=True)
     return degraded
 
 
