@@ -14,6 +14,7 @@ MIT. (c) 2026 Dr Sohil Momin.
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -41,6 +42,11 @@ class InTmp(unittest.TestCase):
     def setUp(self):
         self._old = os.getcwd()
         self.tmp = tempfile.mkdtemp()
+        # The manifest gate (added after these tests) refuses to answer outside a git
+        # working tree - "not a git checkout — manifest.py requires a git working tree" -
+        # so publish_dashboard() degraded on every path and four tests went red in a
+        # plain temp dir while passing in CI. Make the temp dir what the gate needs.
+        subprocess.run(["git", "init", "-q"], cwd=self.tmp, check=True)
         os.chdir(self.tmp)
 
     def tearDown(self):
