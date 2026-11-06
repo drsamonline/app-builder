@@ -353,10 +353,16 @@ def attention():
 
 
 def controls():
-    """Deep-links to each workflow's page, where "Run workflow" dispatches it."""
+    """Deep-links to each workflow's page, where "Run workflow" dispatches it.
+
+    Reads the same fleet scan as the Automations card, so the buttons cannot list a
+    workflow the estate no longer has - which the old hand-written table could, and
+    did: it offered eleven of thirty-three.
+    """
+    autos = fleet_schedules() or []
     return [{"label": a["name"], "what": a["what"],
              "url": "https://github.com/%s/%s/actions/workflows/%s" % (OWNER, a["repo"], a["file"])}
-            for a in AUTOMATIONS]
+            for a in autos]
 
 
 def _auth_get(url, tok):
@@ -501,12 +507,21 @@ def plan_block(rs=None):
     def sl(s):
         return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", (s or "").lower())).strip("-")
 
+    # The estate names its app repositories `app-<slug>`; the idea list names the
+    # app. Comparing the two raw is how "built" read 3 of 153 while ten of those
+    # ideas were live: app-organon-reader IS organon-reader. Both spellings point at
+    # one repository, so both are registered against it.
     live = {}
+    live_repos = set()
     for r in (rs or repos()):
         n = r["name"]
         if n in META or n.endswith("-kit"):
             continue
-        live[sl(n)] = n
+        live_repos.add(n)
+        k = sl(n)
+        live[k] = n
+        if k.startswith("app-"):
+            live.setdefault(k[4:], n)
 
     built = 0
     for a in apps:
@@ -518,14 +533,27 @@ def plan_block(rs=None):
         else:
             a["built"] = False
 
-    planned_slugs = {sl(a.get("name")) for a in apps}
-    not_planned = [n for s, n in live.items() if s not in planned_slugs]
+    def on_plan(repo):
+        k = sl(repo)
+        return k in planned_slugs or (k.startswith("app-") and k[4:] in planned_slugs)
+
+    planned_slugs = {sl(a.get("slug") or a.get("name")) for a in apps}
+    not_planned = [n for n in live_repos if not on_plan(n)]
     return {
         "planned": len(apps),
         "built": built,
+        # The owner's definition of "built" (2026-10-27) is a working app with a
+        # release, a landing page and a live demo. This is not that - it is a name
+        # match - and the registry publishes both numbers precisely because the two
+        # were once confused for each other. The label says which one this is.
+        "built_definition": ("name matching: a live repository whose name matches the "
+                             "idea's slug. NOT the owner's definition of built (release + "
+                             "landing page + live demo), which the registry measures."),
+        "name_matched": built,
         "unbuilt": len(apps) - built,
-        "live_products": len(live),
+        "live_products": len(live_repos),
         "live_not_planned": len(not_planned),
+        "plan_generated": plan.get("generated"),
         "link": "https://github.com/%s/dashboard/blob/main/plan.json" % OWNER,
     }
 
@@ -716,10 +744,20 @@ def dashboard():
         {"title": "Products", "value": str(total), "tone": ""},
         {"title": "Kits", "value": str(len(kits)), "tone": "ok"},
         {"title": "Metadata completeness", "value": "%s/5" % avg, "tone": "ok" if avg >= 4 else "warn"},
-        {"title": "Automations", "value": str(len(autos)), "tone": "ok"},
     ]
+    # "?" when the fleet scan could not be read. A count of zero would be a claim the
+    # console cannot make, and a stale eleven is what this card used to print.
+    if AUTOMATION_SOURCE == "fleet-scan":
+        cards.append({"title": "Automations", "value": str(len(autos)), "tone": "ok"})
+    else:
+        cards.append({"title": "Automations", "value": "?", "tone": "warn"})
     if plan:
-        cards.append({"title": "Built / planned", "value": "%s / %s" % (plan.get("built"), plan.get("planned")), "tone": ""})
+        # "Ideas matched", not "Built": see plan.built_definition. The old label claimed
+        # the owner's definition of built while measuring a name match, so "3 / 153" read
+        # as "three apps exist" when ten of the 153 were live.
+        cards.append({"title": "Ideas matched / planned",
+                      "value": "%s / %s" % (plan.get("built"), plan.get("planned")),
+                      "tone": ""})
 
     return {
         "generated": today.isoformat(),
@@ -736,9 +774,10 @@ def dashboard():
             "cancelled": len(cancelled),
             "unobservable": len(unobservable),
             "total": len(autos),
+            "source": AUTOMATION_SOURCE,
             "note": ("cancelled runs are excluded: a superseded push is intended behaviour, "
                      "not a fault. unobservable means the console could not read the history - "
-                     "which is NOT the same as 'never ran'."),
+                     "which is NOT the same as 'never ran'. " + AUTOMATION_NOTE),
         },
         "cards": cards,
         "summary": {"products": total, "kits": len(kits),
@@ -758,6 +797,8 @@ def dashboard():
         "quota": quota(),
         "changes": changes(),
         "automation": autos,
+        "automation_source": AUTOMATION_SOURCE,
+        "automation_note": AUTOMATION_NOTE,
         "roadmap": roadmap(rs),
         "plan": plan,
         "paused": paused(),
@@ -927,56 +968,163 @@ def plan_status(path):
 
 
 # ---- automation status (what self-updates, and when it last ran) -----------
-AUTOMATIONS = [
-    {"repo": "drsamonline.github.io", "file": "refresh-hub.yml", "name": "Refresh project hub", "what": "the project hub", "schedule": "daily 03:17 UTC"},
-    {"repo": "drsamonline", "file": "update-profile.yml", "name": "Update profile README", "what": "the profile README", "schedule": "daily 03:17 UTC"},
-    {"repo": "dashboard", "file": "refresh.yml", "name": "Refresh dashboard data", "what": "this dashboard", "schedule": "daily 03:47 UTC"},
-    {"repo": "drsamonline", "file": "metrics.yml", "name": "Metrics", "what": "the metric cards", "schedule": "daily 04:00 UTC"},
-    {"repo": "Matneo", "file": "blog.yml", "name": "Refresh blog posts", "what": "the blog", "schedule": "daily 04:12 UTC"},
-    {"repo": "Matneo", "file": "store.yml", "name": "Refresh store catalogue", "what": "the store", "schedule": "daily 04:22 UTC"},
-    {"repo": "knowledge", "file": "refresh.yml", "name": "Refresh plan status", "what": "the plan", "schedule": "daily 04:32 UTC"},
-    {"repo": "registry", "file": "refresh.yml", "name": "Refresh registry", "what": "the registry", "schedule": "daily 04:42 UTC"},
-    {"repo": "app-builder", "file": "kit-tests.yml", "name": "All kit tests", "what": "every kit's tests", "schedule": "daily 05:00 UTC"},
-    {"repo": "skills", "file": "validate.yml", "name": "validate skills", "what": "the skills catalogue", "schedule": "weekly (Mon)"},
-    {"repo": "forge", "file": "heartbeat.yml", "name": "Heartbeat", "what": "the control plane", "schedule": "daily 06:00 UTC"},
-]
+#
+# WAS: a hand-written list of eleven. It had drifted from its own text - it called
+# heartbeat "daily 06:00" when it runs Mon/Wed/Fri 06:45, Matneo's blog and this
+# dashboard "daily" when both run weekly - and it named 11 of the fleet's 33
+# scheduled workflows, omitting forge's seventeen entirely. A count of a hand-kept
+# list is a count of the list, not of the estate, and it says "11" with the same
+# confidence as a measurement.
+#
+# The control panel already fetches every workflow in every repository and records
+# its cron triggers (control-panel/tools/scan.py, published daily). This reads that
+# scan instead of keeping a second copy of the answer: one API call, no Pages
+# dependency, and it works for private repositories with the same token. When the
+# scan cannot be read the console says the number is unknown - it does not fall back
+# to eleven and hope.
+INVENTORY_URL = "https://api.github.com/repos/%s/control-panel/contents/docs/inventory.json"
+
+AUTOMATION_SOURCE = "unknown"     # "fleet-scan" once fleet_schedules() has answered
+AUTOMATION_NOTE = ""
+
+# Cosmetic only - a friendlier "what updates" than the workflow's own name. Nothing
+# is counted from this table, so the worst it can do is read slightly stale.
+WHAT = {
+    ("drsamonline.github.io", "refresh-hub.yml"): "the project hub",
+    ("drsamonline", "update-profile.yml"): "the profile README",
+    ("dashboard", "refresh.yml"): "this dashboard",
+    ("drsamonline", "metrics.yml"): "the metric cards",
+    ("Matneo", "blog.yml"): "the blog",
+    ("Matneo", "store.yml"): "the store",
+    ("knowledge", "refresh.yml"): "the plan",
+    ("registry", "refresh.yml"): "the registry",
+    ("app-builder", "kit-tests.yml"): "every kit's tests",
+    ("skills", "refresh.yml"): "the skills catalogue",
+    ("forge", "heartbeat.yml"): "the control plane",
+    ("control-panel", "scan.yml"): "the fleet inventory",
+    ("audit", "health.yml"): "the fleet health report",
+    ("audit", "licence-check.yml"): "the licence badges",
+    ("dumps", "backup-all.yml"): "the weekly backup",
+}
+
+_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+def cron_text(cron):
+    """A cron line in words, or the cron line itself when it is not a shape we know.
+
+    An unrecognised expression is printed verbatim on purpose: a wrong gloss is
+    worse than a raw one, and a raw one the reader can check.
+    """
+    f = (cron or "").split()
+    if len(f) != 5:
+        return cron or ""
+    minute, hour, dom, mon, dow = f
+    if not (minute.isdigit() and hour.isdigit()):
+        return cron
+    at = "%02d:%02d UTC" % (int(hour), int(minute))
+    if dom == "*" and mon == "*" and dow == "*":
+        return "daily " + at
+    if dom == "*" and mon == "*" and dow != "*":
+        days = [_DAYS[int(x) % 7] for x in dow.split(",") if x.isdigit()]
+        if len(days) == 7:
+            return "daily " + at
+        if days:
+            return "weekly (%s) %s" % (", ".join(days), at)
+        return cron
+    if dow == "*" and mon == "*" and dom.isdigit():
+        return "monthly (day %s) %s" % (dom, at)
+    if dow == "*" and mon == "*":
+        return "monthly (days %s) %s" % (dom, at)
+    return cron
+
+
+def fleet_schedules():
+    """Every workflow in the fleet that carries a schedule, from the control panel.
+
+    Returns a list, or None when the scan cannot be read. None is a different answer
+    from "there are none", and the caller publishes it as such.
+    """
+    global AUTOMATION_SOURCE, AUTOMATION_NOTE
+    url = INVENTORY_URL % OWNER
+    try:
+        blob = _get(url)
+        raw = base64.b64decode("".join((blob.get("content") or "").split()))
+        inv = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        AUTOMATION_NOTE = ("The control panel's fleet inventory could not be read (%s), so "
+                           "the scheduled-workflow list is UNKNOWN this run - not empty." % e)
+        DEGRADED.append({"what": "scheduled workflows", "why": AUTOMATION_NOTE})
+        return None
+    out = []
+    for r in inv.get("repos") or []:
+        repo = r.get("repo")
+        if not repo:
+            continue
+        for w in r.get("workflows") or []:
+            crons = (w.get("triggers") or {}).get("crons") or []
+            if not crons:
+                continue
+            f = w.get("file") or ""
+            out.append({
+                "repo": repo,
+                "file": f,
+                "name": w.get("name") or f,
+                "what": WHAT.get((repo, f)) or (w.get("name") or f),
+                "crons": crons,
+                "schedule": ", ".join(cron_text(c) for c in crons),
+            })
+    if not out:
+        AUTOMATION_NOTE = ("The control panel's inventory parsed but lists no scheduled "
+                           "workflow, which contradicts the estate's own record - the list "
+                           "is unknown, not empty.")
+        DEGRADED.append({"what": "scheduled workflows", "why": AUTOMATION_NOTE})
+        return None
+    out.sort(key=lambda a: (a["repo"].lower(), a["file"]))
+    AUTOMATION_SOURCE = "fleet-scan"
+    AUTOMATION_NOTE = ("%d scheduled workflows in %d repositories, read from the control "
+                       "panel's fleet scan." % (len(out), len({a["repo"] for a in out})))
+    return out
 
 
 def automation():
     """For each self-updating workflow: its schedule and its most recent run.
 
-    Batched: ONE /actions/runs call per repo, then match each workflow by name -
-    instead of one call per workflow.
+    Batched: ONE /actions/runs call per repo, then match each workflow by file (and
+    by name as a fallback) - instead of one call per workflow.
     """
-    repos_needed = sorted({a["repo"] for a in AUTOMATIONS})
+    autos = fleet_schedules()
+    if autos is None:
+        return []
+
+    repos_needed = sorted({a["repo"] for a in autos})
     latest = {}
     unreadable = set()
     for repo in repos_needed:
-        if repo in ("registry", "forge", "knowledge"):
-            continue  # private: the dashboard token cannot read their runs
+        if repo in ("registry", "forge", "knowledge") and SCOPE != "all":
+            continue  # private: this token cannot read their runs
         try:
-            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo) + "?" + "per_page=40")
+            d = _get("https://api.github.com/repos/%s/%s/actions/runs" % (OWNER, repo)
+                     + "?per_page=100")
             for w in d.get("workflow_runs") or []:
-                key = (repo, (w.get("name") or "").strip())
-                if key not in latest:
-                    latest[key] = w
+                base = (w.get("path") or "").rsplit("/", 1)[-1]
+                # The run's `path` is the workflow FILE, which is what the scan records.
+                # Name is the fallback: a workflow without a `name:` is published by
+                # GitHub under its path, and the two would then never match.
+                for key in ((repo, base), (repo, (w.get("name") or "").strip())):
+                    latest.setdefault(key, w)
         except Exception:
             # NOT "no runs yet" - we simply could not look. Saying "never ran"
             # about a workflow that runs daily is the same lie of omission the
             # console already had to correct once.
             unreadable.add(repo)
     out = []
-    for a in AUTOMATIONS:
+    for a in autos:
         rec = dict(a)
         rec["repo_url"] = "https://github.com/%s/%s" % (OWNER, a["repo"])
         rec["url"] = "%s/actions/workflows/%s" % (rec["repo_url"], a["file"])
         rec["last_run"] = None
         rec["conclusion"] = "no runs yet"
-        # WAS A HARD-CODED LIST of three repositories, on the assumption that the token could
-        # only read public ones. That assumption is now measurable - drsoam publishes SCOPE -
-        # so this asks instead of assuming, and starts working the moment a cross-repository
-        # token is present. A hard-coded list of "things I cannot see" goes stale the day the
-        # blindness is cured, and silently.
         if a["repo"] in ("registry", "forge", "knowledge") and SCOPE != "all":
             # NOT "never ran". The workflow runs; the console simply cannot see it,
             # because its token reads public repos only. Saying "never" is a lie of
@@ -989,7 +1137,7 @@ def automation():
             rec["note"] = ("The runs API refused this repository on the last refresh, so this "
                            "is UNKNOWN - not 'never ran'. It lights up again when the fetch does.")
         else:
-            w = latest.get((a["repo"], a["name"]))
+            w = latest.get((a["repo"], a["file"])) or latest.get((a["repo"], a["name"]))
             if w:
                 rec["last_run"] = w.get("updated_at") or w.get("created_at")
                 rec["conclusion"] = w.get("conclusion") or w.get("status") or "?"
