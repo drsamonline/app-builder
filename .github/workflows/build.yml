@@ -306,12 +306,23 @@ jobs:
         env:
           CHANGELOG_DIR: "."
         run: python3 .tools/tools/changelog.py
+      - name: Record the manifest for what this job writes
+        if: steps.cl.outputs.released == 'true'
+        # VERSION and CHANGELOG.md were the last two tracked paths whose writer was
+        # not gated: manifest-audit could not confirm them because the writer is a
+        # WORKFLOW rather than a tool, and every other writer in the estate records
+        # its own sha. This is that record, made where the write happens - before the
+        # commit, so MANIFEST.json lands in the same commit as the files it describes.
+        run: |
+          python3 .tools/tools/manifest.py record VERSION CHANGELOG.md \
+            --producer "app-builder/.github/workflows/build.yml version job"
+
       - name: Commit the version and the changelog
         if: steps.cl.outputs.released == 'true'
         run: |
           git config user.name  "forge-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add VERSION CHANGELOG.md changes
+          git add VERSION CHANGELOG.md changes MANIFEST.json
           git commit -m "chore(release): v${{ steps.cl.outputs.version }} [skip ci]"
           # F-97: a push that exited 0 is not proof the commit reached the branch.
           #
