@@ -313,6 +313,25 @@ def roadmap(rs=None):
     ]
 
 
+def _search_open(extra="", per_page=100):
+    """Open issues AND pull requests for the owner, as one list.
+
+    GitHub's issue search now REFUSES a query that carries neither `is:issue` nor
+    `is:pull-request` - HTTP 422, "Query must include 'is:issue' or 'is:pull-request'" -
+    so a bare `is:open user:<owner>` returns nothing at all. It did until it didn't:
+    on 2026-11-05 the dashboard's community counts went to UNKNOWN and its approvals
+    inbox went silently empty, because one call site swallowed the 422 and the other
+    published it as a degraded fetch. Ask twice, once per kind, and merge.
+    """
+    items = []
+    for kind in ("issue", "pull-request"):
+        q = urllib.parse.quote(("is:open is:%s user:%s %s" % (kind, OWNER, extra)).strip())
+        d = _get("https://api.github.com/search/issues" + "?" + "q=" + q
+                 + "&" + "per_page=" + str(per_page))
+        items += (d.get("items") or [])
+    return items
+
+
 def _days_ago(n):
     return (datetime.datetime.now(datetime.timezone.utc)
             - datetime.timedelta(days=n)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -321,11 +340,8 @@ def _days_ago(n):
 def attention():
     """Open pull requests and issues that need the owner (the approvals inbox)."""
     try:
-        q = urllib.parse.quote("is:open user:" + OWNER)
-        url = "https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=20"
-        d = _get(url)
         out = []
-        for i in d.get("items") or []:
+        for i in _search_open(per_page=20):
             out.append({"title": i.get("title") or "",
                         "repo": (i.get("repository_url") or "").rsplit("/", 1)[-1],
                         "url": i.get("html_url"),
@@ -624,9 +640,7 @@ def community(rs=None):
     # issues and pull requests opened by someone OTHER than the owner
     ext = {"issues": 0, "prs": 0, "items": []}
     try:
-        q = urllib.parse.quote("is:open user:%s -author:%s" % (OWNER, OWNER))
-        d = _get("https://api.github.com/search/issues" + "?" + "q=" + q + "&" + "per_page=100")
-        for i in (d.get("items") or []):
+        for i in _search_open("-author:" + OWNER):
             ext["prs" if i.get("pull_request") else "issues"] += 1
             ext["items"].append({"title": i.get("title") or "",
                                  "repo": (i.get("repository_url") or "").rsplit("/", 1)[-1],
