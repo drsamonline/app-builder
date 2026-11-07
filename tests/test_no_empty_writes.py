@@ -11,6 +11,7 @@ fetch is a claim about us ("we could not look"). They must never be confused.
 
 MIT. (c) 2026 Dr Sohil Momin.
 """
+import base64
 import importlib.util
 import json
 import os
@@ -48,6 +49,14 @@ class InTmp(unittest.TestCase):
         # plain temp dir while passing in CI. Make the temp dir what the gate needs.
         subprocess.run(["git", "init", "-q"], cwd=self.tmp, check=True)
         os.chdir(self.tmp)
+        # DEGRADED and FAILED are MODULE globals, so one test's failed fetch was
+        # still listed in the next test's data.json and made
+        # "data.json must carry the reason" fail on a leftover, not on a bug.
+        # A run is one process in production, so clearing per test is the truth.
+        drsoam.DEGRADED[:] = []
+        drsoam.FAILED.clear()
+        drsoam.AUTOMATION_SOURCE = "unknown"
+        drsoam.AUTOMATION_NOTE = ""
 
     def tearDown(self):
         os.chdir(self._old)
@@ -85,19 +94,55 @@ class TestFetchFailureIsNotEmptiness(unittest.TestCase):
 
 
 class TestAutomationTellsTheTruth(unittest.TestCase):
+    """Two different unknowns, and they are not the same thing:
+
+      * the fleet SCAN cannot be read  -> there is no list at all, so automation()
+        answers [] and DEGRADED carries the reason (the console prints "?" and
+        "the list is UNKNOWN this run, not empty").
+      * the scan is readable but a repo's RUN HISTORY cannot be read -> the
+        workflow exists and is scheduled, so saying "no runs yet" about it would
+        be a lie of omission. It must say "not readable (fetch failed)".
+
+    Both tests below used to mock every fetch at once, which turned the first
+    case into the second and made the suite red for a design that was right.
+    """
+
+    INVENTORY = {"repos": [{"repo": "game-kit", "workflows": [
+        {"file": "test.yml", "name": "Test", "triggers": {"crons": ["0 6 * * *"]}}]}]}
+
     def test_unreadable_runs_are_not_reported_as_never_ran(self):
         real = drsoam._get
-        drsoam._get = lambda url: (_ for _ in ()).throw(drsoam.FetchError("403"))
+        real_source = drsoam.AUTOMATION_SOURCE
+
+        def fake(url):
+            if url == drsoam.INVENTORY_URL % drsoam.OWNER:
+                return {"content": base64.b64encode(json.dumps(self.INVENTORY).encode()).decode()}
+            raise drsoam.FetchError("403")
+
+        drsoam._get = fake
         try:
             autos = drsoam.automation()
         finally:
             drsoam._get = real
-        public = [a for a in autos if a["repo"] not in ("registry", "forge", "knowledge")]
-        self.assertTrue(public)
-        for a in public:
+            drsoam.AUTOMATION_SOURCE = real_source
+        self.assertTrue(autos, "the scan was readable, so there is a list to report on")
+        for a in autos:
             self.assertEqual(a["conclusion"], "not readable (fetch failed)",
                              "%s claimed %r - a failed fetch is not 'no runs yet'" % (a["repo"], a["conclusion"]))
             self.assertNotIn("no runs yet", a["conclusion"])
+
+    def test_an_unreadable_scan_is_empty_AND_says_why(self):
+        # The empty list is only honest while the reason travels with it.
+        real = drsoam._get
+        drsoam._get = lambda url: (_ for _ in ()).throw(drsoam.FetchError("403"))
+        drsoam.DEGRADED[:] = []
+        try:
+            autos = drsoam.automation()
+        finally:
+            drsoam._get = real
+        self.assertEqual(autos, [])
+        self.assertTrue([d for d in drsoam.DEGRADED if d.get("what") == "scheduled workflows"],
+                        "an empty automation list with no reason is a claim that nothing is scheduled")
 
 
 class TestPublishNeverDeletesTheLiveFeed(InTmp):
