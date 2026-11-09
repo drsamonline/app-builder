@@ -1155,7 +1155,7 @@ def rss(items):
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
     out = ['<?xml version="1.0" encoding="UTF-8"?>', '<rss version="2.0"><channel>',
            '<title>drsamonline — what changed</title>',
-           '<link>https://drsamonline.github.io/dashboard/</link>',
+           '<link>https://drsamonline.github.io/dashboard/play/</link>',
            '<description>Recent pushes, pull requests and releases across drsamonline.</description>',
            '<lastBuildDate>' + now + '</lastBuildDate>']
     for c in items or []:
