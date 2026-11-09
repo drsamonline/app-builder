@@ -200,3 +200,7 @@ Free, offline, accountless — and staying that way. If it earned its keep:
 | Email | [sohilmomin2000@gmail.com](mailto:sohilmomin2000@gmail.com) |
 
 Nothing is gated behind it: no accounts, no tracking, no network requests.
+
+## Licence
+
+PolyForm Noncommercial 1.0.0. (c) 2026 Dr Sohil Momin. Part of the Forge system — kits open, orchestrator licensed.
