@@ -57,6 +57,36 @@ def main() -> int:
         print("[build] WARNING: no ICON_PATH - the exe will carry the default icon",
               flush=True)
 
+    # ---- size ------------------------------------------------------------
+    # The launcher serves a folder over http and opens a browser. It does not
+    # do TLS, it does not hash, and it does not decompress anything, so the
+    # modules that drag in libcrypto (2.3 MB), libssl, libbz2, liblzma and
+    # libzstd are dead weight in every app built with this kit.
+    #
+    # Measured on Kitbox (493 tools, 1.1 MB of HTML) with Python 3.12 on Linux:
+    #   default                     8,269,680 bytes
+    #   without these modules       5,745,328 bytes  (-30%)
+    #   plus --strip (POSIX only)   included above
+    # and the binary still serves the app: HTTP 200, correct title, full size.
+    #
+    # unicodedata is NOT in this list on purpose. Excluding it builds fine and
+    # then dies at runtime in socket.getfqdn() -> encodings.idna, which needs
+    # unicodedata — the app never starts and the log says "unknown encoding:
+    # idna" three frames away from the cause.
+    for module in (
+        "ssl", "_ssl", "hashlib", "_hashlib", "_blake2",
+        "bz2", "_bz2", "lzma", "_lzma", "_zstd", "readline",
+    ):
+        cmd += ["--exclude-module", module]
+
+    # Symbol tables are dead weight in a shipped binary. PyInstaller documents
+    # --strip as not recommended on Windows, so it is POSIX-only — which is
+    # also where it matters most, because the Linux build bundles the
+    # interpreter's own libpython3.12.so (29.9 MB unstripped in the CI image,
+    # which is why that artifact is the largest of the three).
+    if os.name != "nt":
+        cmd += ["-s"]
+
     cmd += [
         "--name",
         name,
