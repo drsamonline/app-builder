@@ -34,3 +34,54 @@ jobs:
       - run: python -m pip install --upgrade pip pillow
       - name: Run the tests
         run: python3 -m unittest discover -s tests -v
+
+  # The kit's tests check its python. Nothing checked its OUTPUT — and the
+  # adaptive-icon step exited 1 before Gradle ever ran while every test here
+  # stayed green, which is how a broken build reads as a passing one.
+  #
+  # This job builds one real binary from a throwaway app, starts it, fetches a
+  # page, and refuses a regression in size. It is the only check that exercises
+  # the flags in exe/build.py at all.
+  built-binary:
+    name: The built binary serves an app
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # was @v5
+        with: { python-version: '3.12' }
+      - run: python -m pip install --upgrade pip pyinstaller
+      - name: Build a binary from a throwaway app
+        run: |
+          set -e
+          rm -rf exe/app && mkdir -p exe/app
+          printf '<!doctype html><html><head><title>kit smoke</title></head><body><h1>ok</h1></body></html>' > exe/app/index.html
+          APP_NAME=smoke python3 exe/build.py
+          ls -l exe/dist
+      - name: It serves the app
+        run: |
+          set -e
+          ./exe/dist/smoke-portable > /tmp/run.log 2>&1 &
+          for i in $(seq 1 40); do
+            url=$(grep -oE 'http://127\.0\.0\.1:[0-9]+' /tmp/run.log | head -1 || true)
+            [ -n "$url" ] && break
+            sleep 0.5
+          done
+          [ -n "${url:-}" ] || { echo "::error::the binary never printed a URL"; cat /tmp/run.log; exit 1; }
+          code=$(curl -s -o /tmp/page.html -w '%{http_code}' "$url/")
+          [ "$code" = "200" ] || { echo "::error::the binary answered $code"; cat /tmp/run.log; exit 1; }
+          grep -qi "kit smoke" /tmp/page.html || { echo "::error::the served page is not the app"; exit 1; }
+          echo "served the app at $url"
+          pkill -f smoke-portable || true
+      - name: The binary is not a whale
+        run: |
+          bytes=$(wc -c < exe/dist/smoke-portable)
+          # 12 MB for a launcher, an interpreter and one HTML page. The flags in
+          # exe/build.py that keep it here are the point; without them this is
+          # 17 MB and the failure names the number.
+          limit=$((12 * 1024 * 1024))
+          echo "binary: $((bytes / 1024)) KB (limit $((limit / 1024)) KB)"
+          if [ "$bytes" -gt "$limit" ]; then
+            echo "::error::the binary grew past the budget — check the --exclude-module list in exe/build.py"
+            exit 1
+          fi
