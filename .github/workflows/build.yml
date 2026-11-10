@@ -691,6 +691,9 @@ jobs:
     name: Screenshot the live demo
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: write    # to dispatch the run that publishes the picture
     # AFTER the deploy, so the picture cannot show an older build than the one you
     # can download. It never fails the pipeline for a missing screenshot - a broken
     # picture must not block a release.
@@ -784,6 +787,17 @@ jobs:
             got="$(git rev-parse "origin/$BR^{tree}" 2>/dev/null || echo absent)"
             if [ "$want" = "$got" ]; then
               echo "VERIFIED: origin/$BR has this commit's tree - everything staged landed"
+              # The commit is on the branch, and the site has not seen it: the deploy
+              # job ran before this one. A push made with GITHUB_TOKEN does NOT start
+              # another run (GitHub blocks the recursion), so [skip ci] was never the
+              # cause and removing it changed nothing. A dispatch does work - and the
+              # guard at the top of this step stops the dispatched run from looping.
+              echo "dispatching a run to publish the new screenshot"
+              # The caller's workflow file is build-apps.yml in every app repo.
+              gh api -X POST "repos/${{ github.repository }}/actions/workflows/build-apps.yml/dispatches" \
+                -f ref="$BR" \
+                && echo "dispatched - that run deploys, then skips this job" \
+                || echo "::warning::could not dispatch; the picture will publish on the next push"
               exit 0
             fi
             echo "::error::the branch tree does not match this commit (want $want, found $got)"
