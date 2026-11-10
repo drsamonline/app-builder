@@ -715,6 +715,15 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
         run: |
           set -uo pipefail
+          # This job commits docs/shot.png, and that commit is what the NEXT run
+          # deploys - so the picture on the site is always one deploy behind unless
+          # the commit itself triggers a deploy. It does now ([skip ci] is gone), and
+          # this guard stops it looping: when the head commit is the screenshot
+          # commit, the deploy has already published it and there is nothing to do.
+          if git log -1 --pretty=%s | grep -q '^chore: screenshot of the live demo'; then
+            echo "head is the screenshot commit — the deploy already published it"
+            exit 0
+          fi
           sleep 25   # let Pages publish the deploy we just made
           # .cjs, NOT .js. This script uses require(), and it lives in a directory with
           # no package.json of its own - so Node walks up to the CALLING app's
@@ -741,7 +750,12 @@ jobs:
           if git diff --cached --quiet; then
             echo "the screenshot is unchanged"
           else
-            git commit -m "chore: screenshot of the live demo [skip ci]"
+            # NOT [skip ci]. That marker kept the new picture out of the deployed
+            # site forever: the deploy had already run, so the file in the repo was
+            # newer than the file on Pages, and the landing kept serving the old
+            # image - for seance, a picture of the 404 page. The guard above stops
+            # this from looping.
+            git commit -m "chore: screenshot of the live demo"
             # F-97: a push that exited 0 is not proof the commit reached the branch.
             #
             # NO VENDORED SCRIPT HERE, and that is deliberate. This file is a REUSABLE workflow:
