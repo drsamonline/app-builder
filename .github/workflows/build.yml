@@ -69,6 +69,11 @@ on:
         required: false
         type: string
         default: ""
+      shot_url:
+        description: "URL the screenshot job captures. Empty = the default, https://<owner>.github.io/<app_name>/play/ — which is wrong for any app that is not at /play/ and produced a picture of the 404 page."
+        required: false
+        type: string
+        default: ""
       kit_repo:
         required: false
         type: string
@@ -717,8 +722,18 @@ jobs:
           # this CommonJS script as ESM and fail with `require is not defined in ES
           # module scope`, which is why three apps' build-apps.yml have been red.
           # A .cjs extension is CommonJS in every package, whatever its type says.
+          # The URL is an input now. It was hard-wired to /play/, so an app served
+          # anywhere else (seance serves app.html) was screenshotted at a path that
+          # does not exist: the picture was GitHub Pages' 404 page, committed over a
+          # good image on every run. A screenshot of the wrong page is worse than no
+          # screenshot, because it looks like evidence.
+          SHOT_URL="${{ inputs.shot_url }}"
+          if [ -z "$SHOT_URL" ]; then
+            SHOT_URL="https://${{ github.repository_owner }}.github.io/${{ inputs.app_name }}/play/"
+          fi
+          echo "capturing $SHOT_URL"
           node builder/tools/shot.cjs \
-            --url "https://${{ github.repository_owner }}.github.io/${{ inputs.app_name }}/play/" \
+            --url "$SHOT_URL" \
             --out docs/shot.png --readme README.md
           git config user.name  "forge-bot"
           git config user.email "bot@users.noreply.github.com"
