@@ -605,6 +605,8 @@ jobs:
           APP_NAME: "${{ inputs.app_name }}"
           SHA: "${{ github.sha }}"
           TAG: "${{ inputs.release_tag }}"
+          # set when the caller pushes a v* tag; empty on a normal main build
+          VERSION_TAG: "${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && github.ref_name || '' }}"
           NOTES_FILE: "${{ inputs.release_notes }}"
         run: |
           set -euo pipefail
@@ -635,6 +637,18 @@ jobs:
             echo "::error::no artifacts at all to publish for ${APP_NAME}"; exit 1
           fi
           gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+          # A VERSIONED RELEASE MUST CARRY THE SAME BINARIES, or every
+          # `releases/latest/download/<app>.apk` link on the app's landing page 404s the
+          # moment a version is published. That is not hypothetical: on 2026-11-11 a
+          # batch of versioned releases was created without assets, they took the
+          # "latest" slot, and 45 download links across 25 repositories broke. When this
+          # run is for a version tag, the assets go there too.
+          if [ -n "${VERSION_TAG:-}" ]; then
+            gh release view "${VERSION_TAG}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+              || gh release create "${VERSION_TAG}" --repo "$GITHUB_REPOSITORY" --title "${APP_NAME} ${VERSION_TAG#v}" --generate-notes
+            gh release upload "${VERSION_TAG}" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+            echo "assets also attached to ${VERSION_TAG}"
+          fi
           # The notes are the app's own, when it supplies them - an icon per asset,
           # a checksum table, whatever it wants. {{sha}} and {{tag}} are filled in
           # here so the release still says which commit it came from, and a missing
