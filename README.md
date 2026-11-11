@@ -1,5 +1,7 @@
 # app-builder
 
+
+![Screenshot](docs/shot.png)
 **A shared build kit that turns a static web app into two offline deliverables: a portable Windows EXE and an Android APK.**
 
 [![Landing page](https://img.shields.io/badge/landing%20page-open-2e7d32?style=flat-square)](https://drsamonline.github.io/app-builder/)
