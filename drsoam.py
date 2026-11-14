@@ -876,6 +876,28 @@ PRODUCT_PAGE = HUB + "Matneo/product.html?id=%s"
 # button built from it 404s for every visitor. The detail page renders that button
 # only when sourceRepo is set, so leaving the key out removes a dead link.
 FOR_SALE = [
+    # A PRODUCT THAT IS NOT HERE GETS DELETED BY THE NEXT RUN - and the manifest
+    # gate is right to allow it, because the gate's contract is "overwrite what we
+    # generated", not "merge what you find". The NTET course was added to
+    # Matneo's docs/data/products.json by hand on 2026-11-12 (5e20cd4, 8b57a18)
+    # and never to this list, so the catalogue has been frozen since: the drift
+    # guard refused every store run (correctly - regenerating would have dropped a
+    # ₹999 product from the shop) and the store went stale. The catalogue is the
+    # module, so the product belongs here, verbatim from the entry the owner wrote.
+    {"id": "ntet-homoeopathy-course",
+     "title": "NTET 2026 Homoeopathy \u2014 15-Day Course & CBT Simulator", "category": "Education",
+     "type": "paid", "price": "\u20b9999",
+     "link": "https://drsamonline.github.io/Matneo/ntet/",
+     "landingPage": "https://drsamonline.github.io/Matneo/ntet/",
+     "image": "ntet/assets/blueprint.png",
+     "license": "Proprietary (single user, 365 days)",
+     "tagline": "Offline course + 400-question CBT simulator for the NCH/NTA teaching test.",
+     "description": "15 study days in plain English, a 112-term glossary, 400 questions with rationales, "
+                    "a full 100-question paper, four mocks, a sprint, two exam-style sets and a 2026-pattern "
+                    "set. One HTML file, works offline, licensed for 365 days from first activation. UPI "
+                    "payment, file and PIN sent by email.",
+     "tags": ["education", "homoeopathy", "ntet", "exam", "offline", "cbt"],
+     "buyLinks": [], "rating": {"avg": 0, "count": 0}, "featured": True},
     {"id": "forge-personal", "title": "Forge — Personal licence", "category": "Licence",
      "type": "licence", "price": "Free", "link": ENQUIRE, "landingPage": PRODUCT_PAGE % "forge-personal",
      "image": "", "license": "Proprietary (EULA)",
