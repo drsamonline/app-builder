@@ -167,6 +167,12 @@
   footer a { color: var(--muted); } footer a:hover { color: var(--accent); }
   .stamp { margin-left: auto; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; }
 </style>
+<style>
+/* ---- a11y: the teal takes white; the ghost takes the page's ink ----------- */
+[data-theme="light"] a.btn:not(.ghost){color:#ffffff!important}   /* 2.92 -> 6.54 on #16695c */
+[data-theme="light"] a.btn.ghost{color:#0b1020!important}         /* the ghost sits on the page */
+[data-theme="dark"] a.btn.ghost{color:#ffffff!important}    /* 1.02 -> 19.6 on #0a0c0f */
+</style>
 </head>
 <body>
 
