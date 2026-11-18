@@ -56,9 +56,54 @@ class TheCatalogue(unittest.TestCase):
         self.assertEqual({x["repo"] for x in posts}, {p["id"] for p in drsoam.store()})
 
     def test_no_buy_link_is_invented(self):
-        """PROMPTS/refresh.md: buyLinks stays [] unless the owner supplies one."""
+        """PROMPTS/refresh.md: a buy link exists only when the OWNER supplied one.
+
+        This used to assert `buyLinks == []` for every product, which was the right
+        rule written in the only way it could be checked while nothing was for sale:
+        absence. The six books broke that shape without breaking the rule - their
+        links are the owner's own Amazon listings (added 2026-11-15 in bc3db23,
+        fbe2725, 1b637e3, each with the ASIN the owner published) - so the assertion
+        now states the rule instead of the absence.
+
+        What is checkable: a link must be the canonical Amazon listing OF THIS
+        PRODUCT'S OWN ASIN. A fabricated URL does not match the ASIN on the entry,
+        and a URL pointing at somebody else's book is not this product's link. The
+        ASIN itself is the owner's claim and cannot be checked from here - which is
+        the honest limit, and why the field is asserted to exist rather than trusted.
+        """
         for p in drsoam.store():
-            self.assertEqual(p.get("buyLinks") or [], [], "%s has an invented buy link" % p["id"])
+            links = p.get("buyLinks") or []
+            if not links:
+                continue
+            asin = p.get("asin")
+            self.assertTrue(asin, "%s has a buy link but no asin to check it against"
+                            % p["id"])
+            for link in links:
+                self.assertTrue(link.get("url"), "%s: buyLink without url" % p["id"])
+                self.assertEqual(
+                    link["url"], "https://www.amazon.com/dp/%s" % asin,
+                    "%s: buy link is not the listing of its own asin (%s)"
+                    % (p["id"], asin))
+
+    def test_the_six_books_are_products_of_this_module(self):
+        """The second regression, and the same failure as NTET one level down.
+
+        The books were written into Matneo's docs/data/products.json by hand on
+        2026-11-15 (bc3db23, fbe2725, 1b637e3) and were deleted from the live
+        catalogue four hours later by the next `store` run (b381218), which is
+        exactly what FOR_SALE-only generation does to anything that is not in
+        FOR_SALE. Their ids are pinned here so the deletion cannot recur quietly.
+        """
+        books = {p["id"]: p for p in drsoam.store() if p.get("type") == "book"}
+        self.assertEqual(
+            set(books),
+            {"book-open-materia-medica", "book-open-materia-medica-paperback",
+             "book-clinical-governance-manual", "book-the-unbroken",
+             "book-whispers-in-the-rain", "book-9-shorts"})
+        for pid, b in books.items():
+            self.assertEqual(b["type"], "book", pid)
+            self.assertIn(b.get("format"), ("ebook", "paperback"), pid)
+            self.assertTrue(b.get("asin"), "%s needs the asin it is sold under" % pid)
 
 
 if __name__ == "__main__":
