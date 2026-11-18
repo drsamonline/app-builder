@@ -937,7 +937,9 @@ FOR_SALE = [
      "type": "paid", "price": "\u20b9999",
      "link": "https://drsamonline.github.io/Matneo/ntet/",
      "landingPage": "https://drsamonline.github.io/Matneo/ntet/",
-     "image": "ntet/assets/blueprint.png",
+     # Absolute, like the book covers: the card is also rendered on /products/, where a
+     # relative path resolves to /products/ntet/… and 404s.
+     "image": "https://drsamonline.github.io/Matneo/ntet/assets/blueprint.png",
      "license": "Proprietary (single user, 365 days)",
      "tagline": "Offline course + 400-question CBT simulator for the NCH/NTA teaching test.",
      "description": "15 study days in plain English, a 112-term glossary, 400 questions with rationales, "
