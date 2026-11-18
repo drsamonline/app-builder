@@ -122,6 +122,39 @@ def _paged(path):
     return out
 
 
+def _token():
+    return os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+
+
+def _require_full_scope():
+    """Is a narrow token a DEFECT in this run, rather than a fact to publish?
+
+    Off by default, because a local run with no credential is legitimately
+    public-only. The workflows that PUBLISH A NUMBER about the estate (the plan
+    block, the dashboard) set DRSOAM_REQUIRE_FULL_SCOPE=1, because there the
+    difference between 147 repositories and 136 is not a scope note - it is a
+    published under-count that nothing fails on.
+    """
+    return os.environ.get("DRSOAM_REQUIRE_FULL_SCOPE") == "1"
+
+
+def _no_list_reason():
+    """Why there is no repository list - and WHICH credential produced the answer.
+
+    A rejected token and an empty estate both arrive here as an empty list, and
+    for three cycles the second was reported as the first: the diagnosis was "the
+    owner must supply a read token" when the credential was dead on arrival.
+    """
+    bad = [(u, r) for u, r in FAILED.items() if "/user/repos" in u or "/users/" in u]
+    if not bad:
+        return "no repository list from /user/repos or /users/%s/repos" % OWNER
+    url, reason = bad[0]
+    rejected = "401" in reason or "403" in reason
+    return ("%s -> %s%s" % (url, reason,
+            ". The credential was REJECTED: that is a dead, expired or revoked token, "
+            "not an empty estate" if rejected else ""))
+
+
 def repos():
     """Every live (non-fork) repo, and an honest statement of what was visible.
 
@@ -130,6 +163,12 @@ def repos():
     knowledge pass) returns just the calling repository from that endpoint, so the
     public list is used instead and SCOPE says so. The two are compared rather than
     assumed, so this is correct with or without a cross-repository token.
+
+    WITH DRSOAM_REQUIRE_FULL_SCOPE=1 the fallback is refused when a token WAS
+    supplied: a token that answers, but cannot see the private repositories, is a
+    credential problem to fix, and publishing its narrower answer as the estate is
+    how the plan block came to under-state it by 11 repositories, 8 products and 6
+    kits while every run reported success.
     """
     global SCOPE, SCOPE_NOTE
     owned = [x for x in _paged("/user/repos?affiliation=owner&sort=pushed") if not x.get("fork")]
@@ -139,6 +178,15 @@ def repos():
         SCOPE_NOTE = "read with a token that can see every repository the account owns"
         return owned
     if public:
+        if _require_full_scope() and _token():
+            SCOPE = "failed"
+            SCOPE_NOTE = "the token saw only the public repositories, and this run requires all of them"
+            raise FetchError(
+                "the token saw %d PUBLIC repositories where the account owns at least %d: "
+                "/user/repos returned %d. DRSOAM_REQUIRE_FULL_SCOPE=1 means a narrow token is a "
+                "DEFECT to fix, not a smaller estate to publish - set FANOUT_TOKEN (a "
+                "cross-repository token) and re-run, rather than shipping these numbers."
+                % (len(public), len(public), len(owned)))
         SCOPE = "public-only"
         SCOPE_NOTE = ("the token cannot see private repositories, so this list is the PUBLIC "
                       "ones only. Add a cross-repository read token (FANOUT_TOKEN) to the "
@@ -146,7 +194,7 @@ def repos():
         return public
     SCOPE = "failed"
     SCOPE_NOTE = "neither endpoint returned a repository list"
-    raise FetchError("no repository list from /user/repos or /users/%s/repos" % OWNER)
+    raise FetchError(_no_list_reason())
 
 
 _KIT_IDS = None
