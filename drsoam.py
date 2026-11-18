@@ -955,7 +955,13 @@ FOR_SALE = [
         "price": "$3.18",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-open-materia-medica",
-        "image": "https://m.media-amazon.com/images/I/41ECNIS3B6L._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-open-materia-medica.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/41ECNIS3B6L._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "344 classical remedy portraits, each set beside the real pharmacology of its source substance.",
         "description": "A single-volume reference covering 344 homeopathic remedies. Each portrait gives the core picture, the traditional symptoms, the historical origin and the actual pharmacology and toxicology of the source substance, keeping traditional claims visibly separate from unproven clinical evidence. Compiled from six public-domain masters: Boericke, Clarke, Kent, Allen, Nash and Farrington.",
@@ -997,7 +1003,13 @@ FOR_SALE = [
         "price": "$4.00",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-clinical-governance-manual",
-        "image": "https://m.media-amazon.com/images/I/61IVE6sNZ7L._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-clinical-governance-manual.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/61IVE6sNZ7L._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "20 essential SOPs, audits and rosters aligned with NABH, NQAS and the Clinical Establishments Act.",
         "description": "A ready-to-use administrative framework for quality managers, hospital administrators and medical directors: 20 templates grouped into compliance and facility management, clinical SOPs and triage, and staffing and rosters. Editable Microsoft Word versions of all 20 documents are included through a link inside the book.",
@@ -1039,7 +1051,13 @@ FOR_SALE = [
         "price": "$2.99",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-the-unbroken",
-        "image": "https://m.media-amazon.com/images/I/41-HC1uM1oL._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-the-unbroken.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/41-HC1uM1oL._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "Short, hard poems and aphorisms on refusing to disappear.",
         "description": "Some run to a page, most to a line. The poet at his most direct: poems and aphorisms about refusal, endurance and staying visible.",
@@ -1078,7 +1096,13 @@ FOR_SALE = [
         "price": "$2.99",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-whispers-in-the-rain",
-        "image": "https://m.media-amazon.com/images/I/41+70-4bCtL._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-whispers-in-the-rain.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/41+70-4bCtL._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "Love poems of nearness and distance.",
         "description": "The first sight of someone, the rain that arrives with them, and the long echo after they are gone.",
@@ -1117,7 +1141,13 @@ FOR_SALE = [
         "price": "$0.99",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-9-shorts",
-        "image": "https://m.media-amazon.com/images/I/713TwN8pOSL._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-9-shorts.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/713TwN8pOSL._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "Nine short stories, nine experiences, nine lessons.",
         "description": "Nine short stories, nine experiences, nine lessons \u2014 the author's first collection, in Amazon's Print Replica format.",
@@ -1155,7 +1185,13 @@ FOR_SALE = [
         "price": "$39.00",
         "link": "",
         "landingPage": "https://drsamonline.github.io/Matneo/product.html?id=book-open-materia-medica-paperback",
-        "image": "https://m.media-amazon.com/images/I/41zuzYU9jnL._SL500_.jpg",
+        # The cover is HOSTED HERE, not hotlinked. Amazon's CDN refused it in the
+  # owner's browser and every card fell back to a generic icon, so the shop
+  # looked empty; the file is copied from the retailer by
+  # .github/workflows/book-covers.yml and served from our own Pages. The
+  # original URL is kept in coverSource, so the copy is traceable.
+  "image": "https://drsamonline.github.io/Matneo/images/covers/book-open-materia-medica-paperback.jpg",
+  "coverSource": "https://m.media-amazon.com/images/I/41zuzYU9jnL._SL500_.jpg",
         "license": "All rights reserved (sold on Amazon)",
         "tagline": "The print edition \u2014 750 pages, 344 classical remedy portraits in plain language.",
         "description": "The physical edition of Open Materia Medica: a single-volume reference covering 344 homeopathic remedies, each portrait giving the core picture, the traditional symptoms, the historical origin and the actual pharmacology and toxicology of the source substance, with traditional claims kept visibly separate from unproven clinical evidence. Compiled from six public-domain masters: Boericke, Clarke, Kent, Allen, Nash and Farrington.",
