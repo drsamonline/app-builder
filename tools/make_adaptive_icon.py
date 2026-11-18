@@ -21,6 +21,14 @@ If neither exists it derives both from the ordinary icon: the foreground is the
 icon's artwork scaled into the 66% safe zone, and the background is the icon's own
 dominant colour. That means an app with one PNG still gets a shaped icon.
 
+The ordinary icon is looked for exactly as make_icons.py looks for it — PNG/JPG
+first, then `icon.svg`, `docs/icon.svg`, `assets/icon.svg` rasterised through
+cairosvg. The SVG search was missing here while make_icons.py had it, so an
+SVG-only app built its launcher icons fine and then failed this step with
+"no icon in the app directory" (kitbox, 2026-11-08). An SVG that cannot be
+rasterised is now reported as a skip, not as an absence: the app keeps the
+ordinary launcher icon make_icons.py already wrote, which is a valid APK.
+
 WHAT IT WRITES (108dp, so 108/162/216/324/432 px at mdpi..xxxhdpi):
 
     mipmap-{m,h,xh,xxh,xxxh}dpi/ic_launcher_foreground.png
@@ -49,6 +57,9 @@ except ImportError:                                    # pragma: no cover
 
 DENSITIES = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 ICON_NAMES = ("icon.png", "icon.jpg", "docs/icon.png", "assets/icon.png")
+# The same SVG list, in the same order, as make_icons.py: an app that ships only an
+# SVG gets real artwork rather than a monogram, when cairosvg is installed.
+SVG_NAMES = ("icon.svg", "docs/icon.svg", "assets/icon.svg")
 # In the app directory first, then beside it: an app that keeps its artwork in
 # docs/assets should not have to copy two PNGs into the directory it ships, where
 # they would ride along into the APK's www assets for no reason.
@@ -65,6 +76,21 @@ ADAPTIVE_XML = """<?xml version="1.0" encoding="utf-8"?>
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
 """
+
+
+def rasterise_svg(svg_path: str) -> str | None:
+    """Render an SVG icon to a 512px PNG beside it, or None if cairosvg is absent."""
+    out = os.path.join(os.path.dirname(os.path.abspath(svg_path)), ".icon-raster.png")
+    try:
+        import cairosvg
+    except ImportError:
+        return None
+    try:
+        cairosvg.svg2png(url=svg_path, write_to=out, output_width=512, output_height=512)
+    except Exception as exc:                                   # noqa: BLE001
+        print(f"note: {os.path.basename(svg_path)} could not be rasterised ({exc})", file=sys.stderr)
+        return None
+    return out if os.path.isfile(out) else None
 
 
 def find(app_dir: str, names: tuple[str, ...]) -> str | None:
@@ -114,6 +140,20 @@ def main() -> int:
     icon_path = find(args.app, ICON_NAMES)
     fg_path = find(args.app, FG_NAMES)
     bg_path = find(args.app, BG_NAMES)
+
+    if not icon_path:
+        svg_path = find(args.app, SVG_NAMES)
+        if svg_path:
+            icon_path = rasterise_svg(svg_path)
+            if not icon_path:
+                # The artwork IS there; we simply cannot read it. Say so, and do not
+                # fail a build over it: make_icons.py has already written the ordinary
+                # launcher icon, so the APK is valid without an adaptive one.
+                print(f"skipping the adaptive icon: {os.path.basename(svg_path)} is an SVG and "
+                      "cairosvg is not available to rasterise it (the pipeline installs pillow; "
+                      "add cairosvg to use the app's real artwork). The ordinary launcher icon "
+                      "is unaffected.", file=sys.stderr)
+                return 0
 
     if not icon_path and not fg_path:
         print("no icon in the app directory — nothing to make adaptive", file=sys.stderr)
